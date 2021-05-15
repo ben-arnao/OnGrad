@@ -5,23 +5,6 @@ from matplotlib import pyplot
 from tensorflow_addons.activations import mish
 
 
-def make_model(layer_params, activation, output_size):
-    model = Sequential()
-    for kernel_size in layer_params:
-
-        if kernel_size > 0:
-            if activation == 'mish':
-                model.add(Dense(kernel_size))
-                model.add(Activation(mish))
-            else:
-                model.add(Dense(kernel_size, activation=activation))
-
-    model.add(Dense(output_size))
-
-    model.compile()
-    return model
-
-
 def train(
         get_score,
         get_model_params,
@@ -41,12 +24,21 @@ def train(
         grad_bounds_decay=0.001,
         n_layers=4,
         kernel_size=300,
-        activation='mish',  # any activation passed by name, or mish
-        batch_size=32768):  # used purely for calculating output. use the highest your hardware supports
+        activation='mish',
+        batch_size=32768):
 
     # make model
     model_arch = [kernel_size for _ in range(n_layers)]
-    model = make_model(model_arch, activation, output_size)
+    model = Sequential()
+    for k in model_arch:
+        if kernel_size > 0:
+            if activation == 'mish':
+                model.add(Dense(k))
+                model.add(Activation(mish))
+            else:
+                model.add(Dense(k, activation=activation))
+    model.add(Dense(output_size))
+    model.compile()
 
     # get baselines
     train_preds = model.predict(train_samples, batch_size=batch_size)
@@ -111,10 +103,7 @@ def train(
                                adaptive_lr / (1 + adaptive_lr_scale),
                                adaptive_lr * (1 + adaptive_lr_scale))
 
-        # we take the square root of the adaptive lr so that gradients that saty within their bounds,
-        # don't just keep exploding.
-        # we square values below 1 so that the mean of the adaptive LR is identity (1) assuming
-        # the gradients are equally within bounds and outside of bounds
+        # transform adaptive LR to adaptive component (see notes)
         adaptive_component = np.where(adaptive_lr > 1, np.sqrt(adaptive_lr), np.power(adaptive_lr, 2))
 
         # calculate final step step
