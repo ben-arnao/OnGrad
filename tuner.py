@@ -78,7 +78,7 @@ def train(
         # generate noise
         v = np.random.normal(scale=grad_noise, size=num_params)
 
-        # we do not want noise too small becuase this causes a misleadingly large
+        # we do not want noise too small becuase this causes a misleadingly large calculation for gradient
         min_noise = grad_noise / 10
         while np.any(np.abs(v) < min_noise):
             v = np.where(np.abs(v) < min_noise, np.random.normal(scale=grad_noise, size=num_params), v)
