@@ -14,16 +14,14 @@ def train(
         output_size,
         mom=0.99,
         grad_noise=1e-2,
-        weight_decay=0.01,
+        weight_decay=0.1,
         stop_patience=100,
-        score_delta_lr_inc_ratio=0.01,
-        adaptive_lr_scale=0.1,
-        lr=1e-6,
-        score_delta_lr_scale=0.01,
-        grad_delta=1e-4,
-        grad_bounds_decay=0.001,
+        adaptive_lr_scale=0.001,
+        base_lr=1e-5,
+        score_delta_lr_scale=0.1,
+        grad_delta=0.1,
         n_layers=4,
-        kernel_size=300,
+        kernel_size=200,
         activation='mish',
         batch_size=32768):
 
@@ -43,10 +41,10 @@ def train(
     # get baselines
     train_preds = model.predict(train_samples, batch_size=batch_size)
     best_train_score = get_score(train_preds)
-
     test_preds = model.predict(test_samples, batch_size=batch_size)
     best_test_score = get_score(test_preds)
 
+    # setup score history tracking
     train_score = best_train_score
     history = {'train': [best_train_score], 'test': [best_test_score]}
 
@@ -55,11 +53,17 @@ def train(
 
     # grad tracking vars
     grad = np.zeros(num_params, dtype=np.float32)
-    hi = np.zeros(num_params, dtype=np.float32)
-    lo = np.zeros(num_params, dtype=np.float32)
-    adaptive_lr = np.ones(num_params, dtype=np.float32)
+    grad_est_anchor = np.zeros(num_params, dtype=np.float32)
 
+    # prepare vars
+    lr = base_lr
+    adaptive_lr = 1
     iters_since_last_best = 0
+    iters = 0
+
+    # the recommended amount of samples to satisfy the rule of thumb that for a momentum value of X,
+    # 3 / (1 - X) is the amount of samples needed to get an accurate estimation
+    warmup = int(round(3 / (1 - mom)))
 
     # function to calculate the score of a step (but do not actually commit the step to the model)
     def get_step_score(model, step, samples, batch_size):
@@ -73,6 +77,8 @@ def train(
     while True:
         # generate noise
         v = np.random.normal(scale=grad_noise, size=num_params)
+
+        # we do not want noise too small becuase this causes a misleadingly large
         min_noise = grad_noise / 10
         while np.any(np.abs(v) < min_noise):
             v = np.where(np.abs(v) < min_noise, np.random.normal(scale=grad_noise, size=num_params), v)
@@ -86,28 +92,32 @@ def train(
         grad = grad * mom + g * (1 - mom)
 
         # check if grad is outside current bounds
-        is_new_high = np.where(grad > hi + grad_delta, True, False)
-        is_new_low = np.where(grad < lo - grad_delta, True, False)
+        is_new_high = np.where(grad > grad_est_anchor + grad_delta, True, False)
+        is_new_low = np.where(grad < grad_est_anchor - grad_delta, True, False)
         mom_change = np.logical_or(is_new_high, is_new_low)
 
-        # update upper and lower grad bounds
-        hi = np.where(grad > hi + grad_delta, grad, hi)
-        lo = np.where(grad < lo - grad_delta, grad, lo)
+        # update anchor
+        grad_est_anchor = np.where(mom_change, grad, grad_est_anchor)
 
-        # decay bounds
-        hi *= 1 - grad_bounds_decay
-        lo *= 1 - grad_bounds_decay
+        # get percent of grad ests that are non-stationary
+        est_chg_perc = np.sum(mom_change) / len(grad)
 
-        # adjust lr based on how stationary the moving average estimate is
-        adaptive_lr = np.where(mom_change,
-                               adaptive_lr / (1 + adaptive_lr_scale),
-                               adaptive_lr * (1 + adaptive_lr_scale))
+        # if more estimates are stationary than non-stationary, start increasing lr
+        # if more estimates are non-stationary than stationary, start decreasing lr
+        # scale so that values near 0% and 100% cause a bigger change
+        if est_chg_perc < 0.5:
+            adaptive_lr *= 1 + ((0.5 - est_chg_perc) * 2 * adaptive_lr_scale)
+        else:
+            adaptive_lr *= 1 / (1 + (est_chg_perc - 0.5) * 2 * adaptive_lr_scale)
 
-        # transform adaptive LR to adaptive component (see notes)
-        adaptive_component = np.where(adaptive_lr > 1, np.sqrt(adaptive_lr), np.power(adaptive_lr, 2))
+        # calculate warmup coeff based on current number of iters
+        # scales exponentially so that in the beginning stages, we are mostly just
+        # ramping our gradient estimation up before actually taking any steps
+        warmup_coefficient = np.power((iters + 1) / warmup, 2) if iters < warmup else 1
 
-        # calculate final step step
-        step = grad * lr * adaptive_component
+        # calculate step with score delta and grad stationality modifiers
+        step_size = lr * adaptive_lr * warmup_coefficient
+        step = grad * step_size
 
         # calculate average step magnitude
         step_mag = np.mean(np.absolute(step))
@@ -135,21 +145,12 @@ def train(
             score_delta_scaled = abs(score_delta) * score_delta_lr_scale
 
             # calculate score delta modifier
-            if score_delta > 0:
-                # in most cases we care far more about dropping the LR when the score drops than increasing step size
-                # when score increases. this is to combat the "falling off a cliff" issue with reinforcement learning
-                # where an agent may fall off a cliff and not be able to recover back to where it was before.
-                # while it may speed up convergeance and provide other benefits to gradually ramp up LR
-                # when score is increasing, this coefficient allows us have big drops in step size when the score drops
-                # a big amount, but not have to worry about increasing the step size too much as time goes on and our
-                # score gets higher.
-                score_delta_scaled *= score_delta_lr_inc_ratio
-                f = (1 + score_delta_scaled)
+            if lr < base_lr and score_delta > 0:
+                lr *= 1 + score_delta_scaled
+                if lr > base_lr:
+                    lr = base_lr
             else:
-                f = 1 / (1 + score_delta_scaled)
-
-            # apply modifier to lr
-            lr *= f
+                lr *= 1 / (1 + score_delta_scaled)
 
         # track optimization
         history['train'].append(train_score)
