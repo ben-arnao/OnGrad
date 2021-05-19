@@ -122,11 +122,9 @@ def train(
         # calculate average step magnitude
         step_mag = np.mean(np.absolute(step))
 
-        # get step score
+        # get step score for train and test
         new_train_score = get_step_score(model, step, train_samples, batch_size)
-
-        # get step score
-        test_score, test_num_trades, test_bline = get_step_score(model, step, test_samples, batch_size)
+        test_score = get_step_score(model, step, test_samples, batch_size)
 
         # take step
         set_model_params(model, get_model_params(model) + step)
