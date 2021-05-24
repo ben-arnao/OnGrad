@@ -15,7 +15,7 @@ def train(
         mom=0.99,
         grad_noise=1e-2,
         weight_decay=0.1,
-        stop_patience=100,
+        reduce_lr_patience=25,
         base_lr=1e-5,
         step_clip_factor=5,
         score_delta_warmup_scale=1,
@@ -52,17 +52,11 @@ def train(
 
     # grad tracking vars
     grad = np.zeros(num_params, dtype=np.float32)
-    grad_est_anchor = np.zeros(num_params, dtype=np.float32)
 
     # prepare vars
     lr = base_lr
-    adaptive_lr = 1
     iters_since_last_best = 0
-    iters = 0
-
-    # the recommended amount of samples to satisfy the rule of thumb that for a momentum value of X,
-    # 3 / (1 - X) is the amount of samples needed to get an accurate estimation
-    warmup = int(round(3 / (1 - mom)))
+    lr_reduce_wait = 0
 
     # function to calculate the score of a step (but do not actually commit the step to the model)
     def get_step_score(model, step, samples, batch_size):
@@ -72,7 +66,7 @@ def train(
         score = get_score(preds)
         set_model_params(model, theta)
         return score
-    
+
     def add_grad_estimate(grad):
         # generate noise
         v = np.random.normal(scale=grad_noise, size=num_params)
@@ -94,7 +88,7 @@ def train(
         grad = add_grad_estimate(grad)
 
         step = grad * lr
-        
+
         # clip step size to try and not exceed estimation noise
         step = np.clip(step, -grad_noise * step_clip_factor, grad_noise * step_clip_factor)
 
@@ -140,8 +134,14 @@ def train(
         if train_score > best_train_score:
             best_train_score = train_score
             iters_since_last_best = 0
+            lr_reduce_wait = 0
         else:
             iters_since_last_best += 1
+            lr_reduce_wait += 1
 
-            if iters_since_last_best >= stop_patience:
-                return history['train'][-1]
+            if lr_reduce_wait >= reduce_lr_patience:
+                lr /= 2
+                lr_reduce_wait = 0
+
+            if iters_since_last_best >= reduce_lr_patience * 2:
+                return history
