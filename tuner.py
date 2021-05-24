@@ -16,10 +16,9 @@ def train(
         grad_noise=1e-2,
         weight_decay=0.1,
         stop_patience=100,
-        adaptive_lr_scale=0.001,
         base_lr=1e-5,
-        score_delta_lr_scale=0.1,
-        grad_delta=0.1,
+        step_clip_factor=5,
+        score_delta_warmup_scale=1,
         n_layers=4,
         kernel_size=200,
         activation='mish',
@@ -73,51 +72,31 @@ def train(
         score = get_score(preds)
         set_model_params(model, theta)
         return score
-
-    while True:
+    
+    def add_grad_estimate(grad):
         # generate noise
         v = np.random.normal(scale=grad_noise, size=num_params)
-
-        # we do not want noise too small becuase this causes a misleadingly large calculation for gradient
-        min_noise = grad_noise / 10
+        min_noise = 1e-3
         while np.any(np.abs(v) < min_noise):
             v = np.where(np.abs(v) < min_noise, np.random.normal(scale=grad_noise, size=num_params), v)
 
-        # calculate noise score
+        # calculate negative/positive noise scores
         pos_rew = get_step_score(model, v, train_samples, batch_size)
         neg_rew = get_step_score(model, -v, train_samples, batch_size)
 
-        # add to gradient estimate
-        g = (pos_rew - neg_rew) / (v * 2)
-        grad = grad * mom + g * (1 - mom)
+        if pos_rew != 0 and neg_rew != 0:
+            # add to gradient estimate
+            g = (pos_rew / neg_rew - 1) / (v * 2)
+            return grad * mom + g * (1 - mom)
+        return grad
 
-        # check if grad is outside current bounds
-        is_new_high = np.where(grad > grad_est_anchor + grad_delta, True, False)
-        is_new_low = np.where(grad < grad_est_anchor - grad_delta, True, False)
-        mom_change = np.logical_or(is_new_high, is_new_low)
+    while True:
+        grad = add_grad_estimate(grad)
 
-        # update anchor
-        grad_est_anchor = np.where(mom_change, grad, grad_est_anchor)
-
-        # get percent of grad ests that are non-stationary
-        est_chg_perc = np.sum(mom_change) / len(grad)
-
-        # if more estimates are stationary than non-stationary, start increasing lr
-        # if more estimates are non-stationary than stationary, start decreasing lr
-        # scale so that values near 0% and 100% cause a bigger change
-        if est_chg_perc < 0.5:
-            adaptive_lr *= 1 + ((0.5 - est_chg_perc) * 2 * adaptive_lr_scale)
-        else:
-            adaptive_lr *= 1 / (1 + (est_chg_perc - 0.5) * 2 * adaptive_lr_scale)
-
-        # calculate warmup coeff based on current number of iters
-        # scales exponentially so that in the beginning stages, we are mostly just
-        # ramping our gradient estimation up before actually taking any steps
-        warmup_coefficient = np.power((iters + 1) / warmup, 2) if iters < warmup else 1
-
-        # calculate step with score delta and grad stationality modifiers
-        step_size = lr * adaptive_lr * warmup_coefficient
-        step = grad * step_size
+        step = grad * lr
+        
+        # clip step size to try and not exceed estimation noise
+        step = np.clip(step, -grad_noise * step_clip_factor, grad_noise * step_clip_factor)
 
         # calculate average step magnitude
         step_mag = np.mean(np.absolute(step))
@@ -134,21 +113,15 @@ def train(
         set_model_params(model, get_model_params(model) * (1 - weight_decay * step_mag))
 
         # calculate score delta
-        score_delta = new_train_score / train_score - 1
-        # now that we calculated score delta, assign it back to original var
+        if new_train_score < train_score:
+            drop = abs(new_train_score / train_score - 1)
+            drop_warmup = 1 + int(round(drop * score_delta_warmup_scale * (1 / (1 - mom))))
+            for x in range(drop_warmup):
+                grad = add_grad_estimate(grad)
+                print(x, drop_warmup, np.mean(np.abs(grad)), np.max(np.abs(grad)))
+
+        # set score
         train_score = new_train_score
-
-        # if score is changing, apply modifier to lr (score drops = smaller step, score increases = bigger step)
-        if score_delta != 0:
-            score_delta_scaled = abs(score_delta) * score_delta_lr_scale
-
-            # calculate score delta modifier
-            if lr < base_lr and score_delta > 0:
-                lr *= 1 + score_delta_scaled
-                if lr > base_lr:
-                    lr = base_lr
-            else:
-                lr *= 1 / (1 + score_delta_scaled)
 
         # track optimization
         history['train'].append(train_score)
