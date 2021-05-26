@@ -1,48 +1,50 @@
-from tensorflow.keras.layers import Dense, Activation
-from tensorflow.keras.models import Sequential
 import numpy as np
 from matplotlib import pyplot
-from tensorflow_addons.activations import mish
 
 
 def train(
+        
+        # <><><> functions users needs to supply for their environment
+        
         get_score,  # accepts an array of predictions, returns a float value representing score
         get_model_params,
         set_model_params,
+        model_predict,  # user defines function where input is (model, samples) and output is predictions
+        
+        model,  # supplied model, can be a pytorch or tensorflow model
+        
+        # supply samples
         train_samples,
-        test_samples,
-        output_size,
-        mom=0.998,
-        grad_noise=2e-2,
-        weight_decay=0.1,
+        test_samples=None,  # users doesn't need to supply test samples
+        
+        # <><><> training params
+
+        # reduce lr and end training patience
         lr_patience=50,
-        init_lr=1e-5,
-        step_clip_factor=5,
-        score_delta_warmup_scale=1,
-        n_layers=4,
-        grad_decay=0.1,
-        kernel_size=200,
-        activation='mish',
-        lr_steps=4,
-        predict_batch_size=32768):
-    
-    # make model
-    model_arch = [kernel_size for _ in range(n_layers)]
-    model = Sequential()
-    for k in model_arch:
-        if kernel_size > 0:
-            if activation == 'mish':
-                model.add(Dense(k))
-                model.add(Activation(mish))
-            else:
-                model.add(Dense(k, activation=activation))
-    model.add(Dense(output_size))
-    model.compile()
+        end_patience=1000,
+
+        grad_noise=2e-2,  # noise in weights used to estimate gradient. this is very problem dependant
+        # but the default should be good enough in most cases
+        
+        weight_decay_coeff=0.1,  # weight decay = mean absolute step size * 'weight_decay_coeff'
+        
+        lr=1e-1,  # different than standard LR since grad is calculated differently. start out high
+        # default value probably fine in most cases
+        
+        step_clip_factor=5,  # we do not want to take steps that exceed the size of noise used for grad estimate
+        # recommended 3-10
+        
+        score_delta_warmup_scale=100,  # that amount of estimate recalibration iters taken after score drops
+        # use a higher value if you see that your model is not recovering well after drops
+        
+        grad_decay=0.1,  # higher value == more adaptive estimate, lower value == more stable and slow moving
+        
+        ):
 
     # get baselines
-    train_preds = model.predict(train_samples, batch_size=predict_batch_size)
+    train_preds = model_predict(model, train_samples)
     best_train_score = get_score(train_preds)
-    test_preds = model.predict(test_samples, batch_size=predict_batch_size)
+    test_preds = model_predict(model, train_samples)
     best_test_score = get_score(test_preds)
 
     # setup score history tracking
@@ -56,16 +58,14 @@ def train(
     grad = np.zeros(num_params, dtype=np.float32)
 
     # prepare vars
-    lr = init_lr
     iters_since_last_best = 0
     lr_reduce_wait = 0
-    end_patience = lr_patience * (lr_steps - 1)
 
     # function to calculate the score of a step (but do not actually commit the step to the model)
-    def get_step_score(model, step, samples, batch_size):
+    def get_step_score(model, step, samples):
         theta = get_model_params(model)
         set_model_params(model, theta + step)
-        preds = model.predict(samples, batch_size=batch_size)
+        preds = model_predict(model, samples)
         score = get_score(preds)
         set_model_params(model, theta)
         return score
@@ -75,12 +75,13 @@ def train(
         v = np.random.normal(scale=grad_noise, size=num_params)
 
         # calculate negative/positive noise scores
-        pos_rew = get_step_score(model, v, train_samples, predict_batch_size)
-        neg_rew = get_step_score(model, -v, train_samples, predict_batch_size)
+        pos_rew = get_step_score(model, v, train_samples)
+        neg_rew = get_step_score(model, -v, train_samples)
 
         # keep running total for gradient estimate
         if pos_rew != neg_rew and pos_rew != 0 and neg_rew != 0:
-            grad = np.where(pos_rew > neg_rew, grad + v * (pos_rew / neg_rew - 1), grad - v * (neg_rew / pos_rew - 1))
+            score_difference = abs(pos_rew - neg_rew)
+            grad = np.where(pos_rew > neg_rew, grad + v * score_difference, grad - v * score_difference)
 
         # decay gradient est
         grad *= 1 - grad_decay
@@ -101,15 +102,17 @@ def train(
         step_mag = np.mean(np.absolute(step))
 
         # get step score for train and test
-        new_train_score = get_step_score(model, step, train_samples, predict_batch_size)
-        test_score = get_step_score(model, step, test_samples, predict_batch_size)
+        new_train_score = get_step_score(model, step, train_samples)
+        if train_samples is not None:
+            test_score = get_step_score(model, step, test_samples)
+            history['test'].append(test_score)
 
         # take step
         set_model_params(model, get_model_params(model) + step)
 
         # decay weights where weight decay value is modified by the step magnitude
         # (this is why weight decay should be a higher value by default)
-        set_model_params(model, get_model_params(model) * (1 - weight_decay * step_mag))
+        set_model_params(model, get_model_params(model) * (1 - weight_decay_coeff * step_mag))
 
         # If score drops, calculate additional samples for gradient estimate.
         # The larger the drop, the more samples will be calculated and the more
@@ -119,16 +122,13 @@ def train(
 
             # calculate num samples based on drop percentage, momentum (higher mom, more samples), and
             # a user-supplied coefficient
-            recalibration_samples = 1 + int(round(drop_percent * score_delta_warmup_scale * (1 / (1 - mom))))
+            recalibration_samples = 1 + int(round(drop_percent * score_delta_warmup_scale))
             for _ in range(recalibration_samples):
                 grad = add_sample_to_grad_estimate(grad)
 
         # set score after calculating score delta
         train_score = new_train_score
-
-        # track optimization
         history['train'].append(train_score)
-        history['test'].append(test_score)
 
         # plot train/test history
         pyplot.clf()
@@ -148,11 +148,15 @@ def train(
             iters_since_last_best += 1
             lr_reduce_wait += 1
 
-            # reduce lr
+            # reduce lr/grad decay
             if lr_reduce_wait >= lr_patience:
+                
+                # since we take less recalibration steps and lr gets lower it will take longer for estimate to saturate
+                lr_patience *= 2
+                
                 lr /= np.sqrt(10)
+                grad_decay /= np.sqrt(10)
                 lr_reduce_wait = 0
 
-            # end training if there is no improvement after lowering LR
             if iters_since_last_best >= end_patience:
                 return history
