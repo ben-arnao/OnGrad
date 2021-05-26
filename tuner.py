@@ -6,7 +6,7 @@ from tensorflow_addons.activations import mish
 
 
 def train(
-        get_score,
+        get_score,  # accepts an array of predictions, returns a float value representing score
         get_model_params,
         set_model_params,
         train_samples,
