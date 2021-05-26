@@ -15,15 +15,17 @@ def train(
         mom=0.998,
         grad_noise=2e-2,
         weight_decay=0.1,
-        reduce_lr_patience=50,
-        base_lr=1e-5,
+        lr_patience=50,
+        init_lr=1e-5,
         step_clip_factor=5,
         score_delta_warmup_scale=1,
         n_layers=4,
+        grad_decay=0.1,
         kernel_size=200,
         activation='mish',
+        lr_steps=4,
         predict_batch_size=32768):
-
+    
     # make model
     model_arch = [kernel_size for _ in range(n_layers)]
     model = Sequential()
@@ -54,9 +56,10 @@ def train(
     grad = np.zeros(num_params, dtype=np.float32)
 
     # prepare vars
-    lr = base_lr
+    lr = init_lr
     iters_since_last_best = 0
     lr_reduce_wait = 0
+    end_patience = lr_patience * (lr_steps - 1)
 
     # function to calculate the score of a step (but do not actually commit the step to the model)
     def get_step_score(model, step, samples, batch_size):
@@ -71,20 +74,17 @@ def train(
         # generate noise
         v = np.random.normal(scale=grad_noise, size=num_params)
 
-        # we do not want noise too small as this will cause misleadingly large gradient estimates
-        min_noise = 1e-3
-        while np.any(np.abs(v) < min_noise):
-            v = np.where(np.abs(v) < min_noise, np.random.normal(scale=grad_noise, size=num_params), v)
-
         # calculate negative/positive noise scores
         pos_rew = get_step_score(model, v, train_samples, predict_batch_size)
         neg_rew = get_step_score(model, -v, train_samples, predict_batch_size)
 
-        if pos_rew != 0 and neg_rew != 0:
-            # add to gradient estimate
-            # percent improvement / distance between sample inputs
-            g = (pos_rew / neg_rew - 1) / (v * 2)
-            return grad * mom + g * (1 - mom)
+        # keep running total for gradient estimate
+        if pos_rew != neg_rew and pos_rew != 0 and neg_rew != 0:
+            grad = np.where(pos_rew > neg_rew, grad + v * (pos_rew / neg_rew - 1), grad - v * (neg_rew / pos_rew - 1))
+
+        # decay gradient est
+        grad *= 1 - grad_decay
+
         return grad
 
     while True:
@@ -149,10 +149,10 @@ def train(
             lr_reduce_wait += 1
 
             # reduce lr
-            if lr_reduce_wait >= reduce_lr_patience:
-                lr /= 2
+            if lr_reduce_wait >= lr_patience:
+                lr /= np.sqrt(10)
                 lr_reduce_wait = 0
-            
+
             # end training if there is no improvement after lowering LR
-            if iters_since_last_best >= reduce_lr_patience * 2:
+            if iters_since_last_best >= end_patience:
                 return history
