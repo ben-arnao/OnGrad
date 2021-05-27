@@ -153,9 +153,7 @@ def train(
                 
                 # since we take less recalibration steps and lr gets lower it will take longer for estimate to saturate
                 lr_patience *= 2
-                
                 lr /= np.sqrt(10)
-                grad_decay /= np.sqrt(10)
                 lr_reduce_wait = 0
 
             if iters_since_last_best >= end_patience:
