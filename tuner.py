@@ -14,15 +14,14 @@ def train(
 
         # reduce lr and end training patience
         lr_patience=25,
-        end_patience=100,
+        end_patience=50,
 
         grad_noise=2e-2,  # noise in weights used to estimate gradient. this is very problem dependant
         # but the default should be good enough in most cases
 
         weight_decay_coeff=0.1,  # weight decay = mean absolute step size * 'weight_decay_coeff'
 
-        lr=1e-1,  # different than standard LR since grad is calculated differently. start out high
-        # default value probably fine in most cases
+        step_norm_factor=1e-1,  # step is always a factor of the noise size
 
         step_clip_factor=5,  # we do not want to take steps that exceed the size of noise used for grad estimate
         # recommended 3-10
@@ -30,7 +29,9 @@ def train(
         score_delta_warmup_scale=100,  # coeff that determines amount of recalibration iters after score drops
         # use a higher value if you see that your model is not recovering well after drops
 
-        grad_decay=0.1,  # higher value == more adaptive estimate, lower value == more stable and slow moving
+        momentum=0.9,  # higher value == more adaptive estimate, lower value == more stable and slow moving
+
+        base_est_iters=1  # base amount of samples to add to gradient estimate per step
 
 ):
     # get baselines
@@ -67,24 +68,25 @@ def train(
         neg_rew = get_step_score(model, -v)
 
         # keep running total for gradient estimate
-        if pos_rew != neg_rew and pos_rew != 0 and neg_rew != 0:
+        if pos_rew != neg_rew:
             score_diff = abs(pos_rew - neg_rew)
             grad = np.where(pos_rew > neg_rew, grad + v * score_diff, grad - v * score_diff)
 
-        # make scale independent (with gradients, all we care about relative value), scale is nothing more than LR
-        grad = grad / np.mean(np.abs(grad))
-
         # decay gradient est
-        grad *= 1 - grad_decay
+        grad *= momentum
 
         return grad
 
     while True:
-        # always add at least one sample to estimate each iteration
-        grad = add_sample_to_grad_estimate(grad)
+        for _ in range(base_est_iters):
+            grad = add_sample_to_grad_estimate(grad)
 
         # calculate step
-        step = grad * lr
+        # rescale grad to mean of 1 because with grad we only care about values relative to another.
+        # if we don't rescale, step_size can be affected by the scale change of score, which is irrelevant to gradient
+        # then make step size a factor of noise
+        grad_rescaled = grad / np.mean(np.abs(grad))
+        step = grad_rescaled * ((grad_noise * step_norm_factor) / np.mean(np.abs(grad_rescaled)))
 
         # clip step size to try and not exceed the noise used for gradient estimation
         step = np.clip(step, -grad_noise * step_clip_factor, grad_noise * step_clip_factor)
@@ -106,7 +108,7 @@ def train(
         # The larger the drop, the more samples will be calculated and the more
         # accurate and "up to date" the estimate will be.
         if new_score < score:
-            
+
             if score < 0 or new_score < 0:
                 raise NotImplementedError('Does not currently handle negative scores. consider adding a baseline and'
                                           'clipping anything under to 0')
@@ -137,9 +139,7 @@ def train(
 
             # reduce lr/grad decay
             if lr_reduce_wait >= lr_patience:
-                # since we take less recalibration steps and lr gets lower it will take longer for estimate to saturate
-                lr_patience *= 1.5
-                lr /= np.sqrt(10)
+                step_norm_factor /= np.sqrt(10)
                 lr_reduce_wait = 0
 
             if iters_since_last_best >= end_patience:
