@@ -7,7 +7,7 @@ def train(
         # <><><> functions users needs to supply for their environment
         get_model_params,
         set_model_params,
-        get_episode_score,
+        get_episode_score,  # input is model, return a positive float for score
         model,  # supplied model, can be a pytorch or tensorflow model
 
         # <><><> training params
@@ -17,19 +17,18 @@ def train(
         end_patience=50,
 
         grad_noise=2e-2,  # noise in weights used to estimate gradient. this is very problem dependant
-        # but the default should be good enough in most cases
+        # default should be good enough in most cases
 
         weight_decay_coeff=0.1,  # weight decay = mean absolute step size * 'weight_decay_coeff'
 
-        step_norm_factor=1,  # step is always a factor of the noise size
+        step_norm_factor=1,  # step size is always a factor of the noise size
 
-        step_clip_factor=5,  # we do not want to take steps that exceed the size of noise used for grad estimate
-        # recommended 3-10
+        step_clip_factor=3,  # we do not want to take steps that exceed the size of noise used for grad estimate
+        # recommended 1-5
 
-        score_delta_warmup_scale=100,  # coeff that determines amount of recalibration iters after score drops
-        # use a higher value if you see that your model is not recovering well after drops
+        recaliberation_factor=100,  # coeff that determines amount of recalibration iters after score drops
 
-        momentum=0.9,  # higher value == more adaptive estimate, lower value == more stable and slow moving
+        momentum=0.9,  # momentum for gradient estimate
 
         base_est_iters=1  # base amount of samples to add to gradient estimate per step
 
@@ -77,7 +76,7 @@ def train(
         return grad
 
     while True:
-        
+
         # base samples each iteration used to estimate gradient
         for _ in range(base_est_iters):
             grad = add_sample_to_grad_estimate(grad)
@@ -110,9 +109,9 @@ def train(
             if score < 0 or new_score < 0:
                 raise NotImplementedError('Does not currently handle negative scores. consider adding a baseline and'
                                           'clipping anything under to 0')
-            
+
             drop_percent = abs(new_score / score - 1)
-            recalibration_samples = 1 + int(round(drop_percent * score_delta_warmup_scale))
+            recalibration_samples = 1 + int(round(drop_percent * recaliberation_factor))
             for _ in range(recalibration_samples):
                 grad = add_sample_to_grad_estimate(grad)
 
@@ -135,10 +134,8 @@ def train(
 
             # reduce lr/grad decay
             if lr_reduce_wait >= lr_patience:
-                
                 # lower the LR the more patience we should have to end training
-                end_patience += 10
-                
+                end_patience += 5
                 step_norm_factor /= np.sqrt(10)
                 lr_reduce_wait = 0
 
