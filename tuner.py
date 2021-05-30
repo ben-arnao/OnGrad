@@ -8,29 +8,29 @@ def train(
         get_model_params,
         set_model_params,
         get_episode_score,  # input is model, return a positive float for score
-        model,  # supplied model, can be a pytorch or tensorflow model
+        model,  # supplied model, can be a any type of model as long as you define get/set params as well as ep score
 
         # <><><> training params
 
-        # reduce lr and end training patience
-        lr_patience=25,
-        end_patience=50,
+        # reduce lr and end training vars
+        patience=20,
+        lr_reduce_factor=2,
+        patience_inc=10,
 
-        grad_noise=2e-2,  # noise in weights used to estimate gradient. this is very problem dependant
+        noise=1e-2,  # noise in weights used to estimate gradient. this is very problem dependant
         # default should be good enough in most cases
 
         weight_decay_coeff=0.1,  # weight decay = mean absolute step size * 'weight_decay_coeff'
 
-        step_norm_factor=1,  # step size is always a factor of the noise size
+        init_lr=3,  # step size is a factor of noise
 
-        step_clip_factor=3,  # we do not want to take steps that exceed the size of noise used for grad estimate
-        # recommended 1-5
+        step_clip_factor=10,  # a way to keep steps from being too much larger than estimation noise
 
-        recaliberation_factor=100,  # coeff that determines amount of recalibration iters after score drops
+        recaliberation_factor=25,  # coeff that determines amount of recalibration iters after score drops
 
         momentum=0.9,  # momentum for gradient estimate
 
-        base_est_iters=1  # base amount of samples to add to gradient estimate per step
+        base_est_iters=3  # base amount of samples to add to gradient estimate per step
 
 ):
     # get baseline
@@ -48,6 +48,7 @@ def train(
     # prepare vars
     iters_since_last_best = 0
     lr_reduce_wait = 0
+    lr = init_lr
 
     # function to calculate the score of a step (but do not actually commit the step to the model)
     def get_step_score(model, step):
@@ -55,11 +56,15 @@ def train(
         set_model_params(model, theta + step)
         score = get_episode_score(model)
         set_model_params(model, theta)
+        
+        if score < 0:
+            raise NotImplementedError('Does not currently handle negative scores. consider adding a baseline and'
+                                      'clipping anything still negative to 0')
         return score
 
     def add_sample_to_grad_estimate(grad):
         # generate noise
-        v = np.random.normal(scale=grad_noise, size=num_params)
+        v = np.random.normal(scale=noise, size=num_params)
 
         # calculate negative/positive noise scores
         pos_rew = get_step_score(model, v)
@@ -67,8 +72,7 @@ def train(
 
         # keep running total for gradient estimate
         if pos_rew != neg_rew:
-            score_diff = abs(pos_rew - neg_rew)
-            grad = np.where(pos_rew > neg_rew, grad + v * score_diff, grad - v * score_diff)
+            grad = np.where(pos_rew > neg_rew, grad + v * (pos_rew / neg_rew - 1), grad - v * (neg_rew / pos_rew - 1))
 
         # decay gradient est to fresh estimate over time
         grad *= momentum
@@ -82,14 +86,10 @@ def train(
             grad = add_sample_to_grad_estimate(grad)
 
         # <<<< calculate step >>>>
-        # rescale grad to mean of 1 because with grad we only care about values relative to another.
-        # if we don't rescale, step_size can be affected by the scale change of score, which is irrelevant to gradient
-        # then make step size a factor of noise used for estimating gradient
-        grad_rescaled = grad / np.mean(np.abs(grad))
-        step = grad_rescaled * ((grad_noise * step_norm_factor) / np.mean(np.abs(grad_rescaled)))
+        step = grad * ((noise * lr) / np.mean(np.abs(grad)))
 
         # clip step size to try and not exceed the noise used for gradient estimation
-        step = np.clip(step, -grad_noise * step_clip_factor, grad_noise * step_clip_factor)
+        step = np.clip(step, -noise * step_clip_factor, noise * step_clip_factor)
 
         # calculate average step magnitude for use in determining weight decay factor
         step_mag = np.mean(np.absolute(step))
@@ -100,18 +100,13 @@ def train(
         # take step
         set_model_params(model, get_model_params(model) + step)
 
-        # decay weights where weight decay value is modified by the step magnitude
+        # decay weights
         set_model_params(model, get_model_params(model) * (1 - weight_decay_coeff * step_mag))
 
         # calculate num recalibration samples based on score drop percentage
         if new_score < score:
-
-            if score < 0 or new_score < 0:
-                raise NotImplementedError('Does not currently handle negative scores. consider adding a baseline and'
-                                          'clipping anything under to 0')
-
             drop_percent = abs(new_score / score - 1)
-            recalibration_samples = 1 + int(round(drop_percent * recaliberation_factor))
+            recalibration_samples = int(round(drop_percent * recaliberation_factor))
             for _ in range(recalibration_samples):
                 grad = add_sample_to_grad_estimate(grad)
 
@@ -132,12 +127,11 @@ def train(
             iters_since_last_best += 1
             lr_reduce_wait += 1
 
-            # reduce lr/grad decay
-            if lr_reduce_wait >= lr_patience:
-                # lower the LR the more patience we should have to end training
-                end_patience += 5
-                step_norm_factor /= np.sqrt(10)
+            if lr_reduce_wait >= patience / 2:
+                # allows for more patience if algo is still finding new bests at lower LRs
+                patience += patience_inc
+                lr /= lr_reduce_factor
                 lr_reduce_wait = 0
 
-            if iters_since_last_best >= end_patience:
+            if iters_since_last_best >= patience:
                 return score_history
