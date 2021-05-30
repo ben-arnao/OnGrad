@@ -57,8 +57,8 @@ def train(
         score = get_episode_score(model)
         set_model_params(model, theta)
         
-        if score < 0:
-            raise NotImplementedError('Does not currently handle negative scores. consider adding a baseline and'
+        if score <= 0:
+            raise NotImplementedError('Does not currently handle negative scores or 0. consider adding a baseline and'
                                       'clipping anything still negative to 0')
         return score
 
