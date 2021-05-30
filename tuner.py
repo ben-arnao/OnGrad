@@ -73,6 +73,9 @@ def train(
         # keep running total for gradient estimate
         if pos_rew != neg_rew:
             grad = np.where(pos_rew > neg_rew, grad + v * (pos_rew / neg_rew - 1), grad - v * (neg_rew / pos_rew - 1))
+        
+        # eventually probably want to use score difference as opposed to percent drop so we can use negative scores
+        # we will need to normalize gradient before step so that the scale of score doesn't affect step size
 
         # decay gradient est to fresh estimate over time
         grad *= momentum
@@ -105,6 +108,8 @@ def train(
 
         # calculate num recalibration samples based on score drop percentage
         if new_score < score:
+            # probably want to keep a moving average of score, then we can calculate recaliberation samples from
+            # score difference / average score    
             drop_percent = abs(new_score / score - 1)
             recalibration_samples = int(round(drop_percent * recaliberation_factor))
             for _ in range(recalibration_samples):
