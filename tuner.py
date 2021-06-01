@@ -22,15 +22,15 @@ def train(
 
         weight_decay_coeff=0.1,  # weight decay = mean absolute step size * 'weight_decay_coeff'
 
-        init_lr=3,  # step size is a factor of noise
+        init_lr=1,  # step size is a factor of noise
 
         step_clip_factor=10,  # a way to keep steps from being too much larger than estimation noise
 
-        recaliberation_factor=25,  # coeff that determines amount of recalibration iters after score drops
+        recaliberation_factor=50,  # coeff that determines amount of recalibration iters after score drops
 
-        momentum=0.9,  # momentum for gradient estimate
+        momentum=0.5,  # momentum for gradient estimate
 
-        base_est_iters=3  # base amount of samples to add to gradient estimate per step
+        base_est_iters=15  # base amount of samples to add to gradient estimate per step
 
 ):
     # get baseline
@@ -56,7 +56,7 @@ def train(
         set_model_params(model, theta + step)
         score = get_episode_score(model)
         set_model_params(model, theta)
-        
+
         if score <= 0:
             raise NotImplementedError('Does not currently handle negative scores or 0. consider adding a baseline and'
                                       'clipping anything still negative to 0')
@@ -73,19 +73,21 @@ def train(
         # keep running total for gradient estimate
         if pos_rew != neg_rew:
             grad = np.where(pos_rew > neg_rew, grad + v * (pos_rew / neg_rew - 1), grad - v * (neg_rew / pos_rew - 1))
-        
+
         # eventually probably want to use score difference as opposed to percent drop so we can use negative scores
         # we will need to normalize gradient before step so that the scale of score doesn't affect step size
 
+        return grad
+
+    recalibration_samples = 0
+
+    while True:
+        
         # decay gradient est to fresh estimate over time
         grad *= momentum
 
-        return grad
-
-    while True:
-
         # base samples each iteration used to estimate gradient
-        for _ in range(base_est_iters):
+        for _ in range(base_est_iters + recalibration_samples):
             grad = add_sample_to_grad_estimate(grad)
 
         # <<<< calculate step >>>>
@@ -111,9 +113,7 @@ def train(
             # probably want to keep a moving average of score, then we can calculate recaliberation samples from
             # score difference / average score    
             drop_percent = abs(new_score / score - 1)
-            recalibration_samples = int(round(drop_percent * recaliberation_factor))
-            for _ in range(recalibration_samples):
-                grad = add_sample_to_grad_estimate(grad)
+            recalibration_samples = max(1, int(round(drop_percent * recaliberation_factor)))
 
         # set score after calculating score delta
         score = new_score
@@ -134,6 +134,9 @@ def train(
 
             if lr_reduce_wait >= patience / 2:
                 # allows for more patience if algo is still finding new bests at lower LRs
+                if base_est_iters > 1:
+                    base_est_iters -= 1
+                
                 patience += patience_inc
                 lr /= lr_reduce_factor
                 lr_reduce_wait = 0
