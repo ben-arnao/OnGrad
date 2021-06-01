@@ -34,3 +34,5 @@ OnGrad attempts to solve this issue in two ways...
 1) We add extra "recalibration" estimate samples after our score drops. This scale with the % score drop, such that the bigger the drop, the more samples accumulated for next gradient estimate. One wants to be cautious here, as sometimes a drop is normal onto better optima, so setting the recalibration samples too high, can cause optimization to lose it's momentum.
 
 3) A tried and true tactic, we also lower LR as we go on. We also increase the LR reduce patience each time the LR drops, allowing optimization to climb back into better optima with smaller steps. I've found the gradually reducing LR (by a factor of 2 for example) works the best here.
+
+The end result is a RIL algorithm that from my experience tackles all of these issues and does it in a simple and more intuitive way. Please try out OnGrad for yourself and let me know of the results!
