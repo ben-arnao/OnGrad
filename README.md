@@ -1,21 +1,19 @@
 # OnGrad
 A derivative free reinforcement learning algo
 
-Value-function based reinforcement learning algorithms have fallen by the wayside in recent years for a number of reasons. There is much literature that explains why in depth, but ultimately they do not do well in many real-life environments where reward can be sparse and the model needs to consider rewards at varying time horizons for many different pathways that can be taken.
+State of the art reinforcement learning methods like PPO or SAC leave a lot to be desired when used on complex problems to achieve competitive performance. There are a few big shortcomings.
 
-One such attempt at forcing the model to focus on more relevant information is the advantage function, where we now try to predict the advantage of one action over another. As opposed to wasting a model's focus and energy trying to predict the value itself, all we need to know is how much better action A is than action B.
+1) A differentiable loss function is required in some capacity in most cases. Many real life problems either don't have one at all, or the function that ends up being used is suboptimal at best. That is to say, that a decrease in loss does not always translate to an increase in final epsiode performance in a straightforward manner. One can expect a loose correlation, but not much more. This is fine, if in a perfect world we can expect to decrease loss indefinitely until we reach 0. That is not reality, and if there is ever a scenario in which a higher loss can mean better final episode performance, this can be problematic on a number of different levels for obvious reasons.
 
-Policy gradient methods operate directly on episode score, which cuts out the middle man and ultimately increases model performance by a substantial amount.
+2) They usually require the practitioner to guess at or arrive at by trial and error a good value for a single static time horizon value (alpha). This may be fine if we want something decent, but to achieve high end competitive performance on some tasks, a model will more than likely need to consider a wide variety of time horizons at varying points of play.
 
-There are numerous advantages of policy gradient methods and more importantly, not having to define a derivative for your problem. For most real life problems, actions can be sparse and have complex relationships with reward distributions across time varying time horizons. For most problems, it is not possible to have a well defined loss function associated with this type of environment, and for most, the only formal goal is that we want to maximize episode score.
+3) They also can rely on tedious exploration strategies and backpropagation of reward which require many samples.
 
-What this all means is that trying model these dynamics becomes overly complex and leaves a lot of room for humans to not pick correct hyper parameters. It also allows for us to find differentiable losses that are not fully representative of our final goal, maximum episode score. This becomes even more true when we consider that one cannot expect a fully fitted model, only partially fitted. Where a model might decide to fit certain "easier" areas better than others, and given the complex nature of RIL environments, this might completely skew the idea that a better fitted model equals a higher performing model.
-
-Many of today's methods also rely on tedious exploration and backpropagation of reward which require many samples.
+4) These methods can be overly complex. Some even require specialized methodologies to deal with a particular use case.
 
 Reinforcement learning is at reckoning with Occam's razor.
 
-One such method that was proposed to solve some of these shortcoming is Natural Evolutionary Strategies (NES). NES takes a few big steps in the right direction but ultimately falls short in a few key areas. NES is very slow requiring tens and thousands of samples to calculate gradient for just a single step. It also suffers from instability as optimization gets into tougher higher score areas, preventing optimization from reaching into higher maxima.
+One such method that was proposed to solve some of these shortcoming is Natural Evolutionary Strategies (NES). NES takes a few big steps in the right direction but ultimately falls short in a few key areas. NES is very slow requiring tens and thousands of samples to estimate the gradient for just a single step. It also suffers from instability as optimization gets into tougher higher score areas, preventing optimization from reaching into higher maxima.
 
 OnGrad takes a step back from all the hype and incorporates a novel way of calculating gradient that carries over from step to step. We accumulate sample scores in an additive manner. When it comes to gradient, all we care about is relative magnitude and scale is irrelevant. One can also assume gradient smoothly transforms, such that having a base from the previous step, can speed up estimate saturation.
 
@@ -33,6 +31,6 @@ OnGrad attempts to solve this issue in two ways...
 
 1) We add extra "recalibration" estimate samples after our score drops. This scale with the % score drop, such that the bigger the drop, the more samples accumulated for next gradient estimate. One wants to be cautious here, as sometimes a drop is normal onto better optima, so setting the recalibration samples too high, can cause optimization to lose it's momentum.
 
-3) A tried and true tactic, we also lower LR as we go on. We also increase the LR reduce patience each time the LR drops, allowing optimization to climb back into better optima with smaller steps. I've found the gradually reducing LR (by a factor of 2 for example) works the best here.
+2) A tried and true tactic, we also lower LR as we go on. We also increase the LR reduce patience each time the LR drops, allowing optimization to climb back into better optima with smaller steps. I've found the gradually reducing LR (by a factor of 2 for example) works the best here.
 
-The end result is a RIL algorithm that from my experience tackles all of these issues and does it in a simple and more intuitive way. Please try out OnGrad for yourself and let me know of the results!
+The end result is a RIL algorithm that from my experience tackles all of these issues and does it in a simple and more intuitive way. Please try out OnGrad for yourself and please share the results!
