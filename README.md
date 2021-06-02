@@ -1,4 +1,4 @@
-# OnGrad
+# OnGrad (online gradient estimation)
 A derivative free reinforcement learning algo
 
 State of the art reinforcement learning methods like PPO or SAC leave a lot to be desired when used on complex problems to achieve competitive performance. There are a few big shortcomings.
