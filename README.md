@@ -15,7 +15,8 @@ Reinforcement learning is at reckoning with Occam's razor.
 
 One such method that was proposed to solve some of these shortcoming is Natural Evolutionary Strategies (NES). NES takes a few big steps in the right direction but ultimately falls short in a few key areas. NES is very slow requiring tens and thousands of samples to estimate the gradient for just a single step. It also suffers from instability as optimization gets into tougher higher score areas, preventing optimization from reaching into higher maxima.
 
-OnGrad takes a step back from all the hype and incorporates a novel way of calculating gradient that carries over from step to step. We accumulate sample scores in an additive manner. When it comes to gradient, all we care about is relative magnitude and scale is irrelevant. One can also assume gradient smoothly transforms, such that having a base from the previous step, can speed up estimate saturation.
+OnGrad takes a step back from all the hype and incorporates a novel way of calculating gradient that carries over from step to step. We accumulate sample scores in an additive manner. When it comes to gradient, all we care about is relative magnitude and scale is irrelevant. One can also assume gradient smoothly transforms throughout optimization
+, such that having a base from the previous step, can speed up estimate saturation.
 
 We start out accumulating more samples per step when LR is high and gradient changes more rapidly, and scale it down as LR gets lower and gradient doesn't change too much. Therefore we don't need as many estimates to get a fresh and accurate estimate from step to step.
 
