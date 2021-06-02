@@ -28,9 +28,9 @@ def train(
 
         recaliberation_factor=50,  # coeff that determines amount of recalibration iters after score drops
 
-        momentum=0.5,  # momentum for gradient estimate
+        momentum=0.9,  # momentum for gradient estimate
 
-        base_est_iters=15  # base amount of samples to add to gradient estimate per step
+        base_est_iters=25  # base amount of samples to add to gradient estimate per step
 
 ):
     # get baseline
