@@ -8,30 +8,27 @@ def train(
         get_model_params,
         set_model_params,
         get_episode_score,  # input is model, return a positive float for score
-        model,  # supplied model, can be a any type of model as long as you define get/set params as well as ep score
+        model,
 
-        # <><><> training params
+        ### grad params ###
+        grad_decay=0.1,
+        noise_stddev=0.01,  # standard deviation of the noise used to estimate the gradient
+        init_est_samples=10,
+        decay_grad_every_x_samples=10,
+        recaliberation_factor=25,
+        est_samples_floor=1,
+        extra_decay_on_drop=False,
 
-        # reduce lr and end training vars
+        ### patience params ###
         patience=20,
-        lr_reduce_factor=2,
         patience_inc=10,
+        min_delta=0.01,
+        lr_reduce_factor=2,
 
-        noise=1e-2,  # noise in weights used to estimate gradient. this is very problem dependant
-        # default should be good enough in most cases
-
-        weight_decay_coeff=0.1,  # weight decay = mean absolute step size * 'weight_decay_coeff'
-
-        init_lr=1,  # step size is a factor of noise
-
-        step_clip_factor=10,  # a way to keep steps from being too much larger than estimation noise
-
-        recaliberation_factor=50,  # coeff that determines amount of recalibration iters after score drops
-
-        momentum=0.9,  # momentum for gradient estimate
-
-        base_est_iters=25  # base amount of samples to add to gradient estimate per step
-
+        ### step/weight params ###
+        step_clip_factor=3,
+        init_lr=0.1,
+        weight_decay=0.1,
 ):
     # get baseline
     best_score = get_episode_score(model)
@@ -44,11 +41,6 @@ def train(
 
     # gradient estimate
     grad = np.zeros(num_params, dtype=np.float32)
-
-    # prepare vars
-    iters_since_last_best = 0
-    lr_reduce_wait = 0
-    lr = init_lr
 
     # function to calculate the score of a step (but do not actually commit the step to the model)
     def get_step_score(model, step):
@@ -64,7 +56,7 @@ def train(
 
     def add_sample_to_grad_estimate(grad):
         # generate noise
-        v = np.random.normal(scale=noise, size=num_params)
+        v = np.random.normal(scale=noise_stddev, size=num_params)
 
         # calculate negative/positive noise scores
         pos_rew = get_step_score(model, v)
@@ -79,22 +71,34 @@ def train(
 
         return grad
 
-    recalibration_samples = 0
+    # prep variables before training
+    lr = init_lr
+    iters_since_last_best = 0
+    lr_reduce_wait = 0
+    est_samples = init_est_samples
+    extra_iters = 0
+    tot_est_samples = 0
+    decay_grad_next_iter = False
 
     while True:
-        
-        # decay gradient est to fresh estimate over time
-        grad *= momentum
+        if decay_grad_next_iter:
+            grad *= 1 - grad_decay
+            decay_grad_next_iter = False
 
-        # base samples each iteration used to estimate gradient
-        for _ in range(base_est_iters + recalibration_samples):
+        # accumlate samples for gradient estimate
+        for _ in range(est_samples + extra_iters):
             grad = add_sample_to_grad_estimate(grad)
+            tot_est_samples += 1
 
-        # <<<< calculate step >>>>
-        step = grad * ((noise * lr) / np.mean(np.abs(grad)))
+            # decay gradient to prevent it from stagnating when gradient is neutral
+            if tot_est_samples % decay_grad_every_x_samples == 0:
+                decay_grad_next_iter = True
 
-        # clip step size to try and not exceed the noise used for gradient estimation
-        step = np.clip(step, -noise * step_clip_factor, noise * step_clip_factor)
+        # calculate step
+        step = grad * ((noise_stddev * lr) / np.mean(np.abs(grad)))
+
+        # clip step size to try and not exceed estimation noise
+        step = np.clip(step, -noise_stddev * step_clip_factor, noise_stddev * step_clip_factor)
 
         # calculate average step magnitude for use in determining weight decay factor
         step_mag = np.mean(np.absolute(step))
@@ -106,14 +110,16 @@ def train(
         set_model_params(model, get_model_params(model) + step)
 
         # decay weights
-        set_model_params(model, get_model_params(model) * (1 - weight_decay_coeff * step_mag))
+        set_model_params(model, get_model_params(model) * (1 - weight_decay * step_mag))
 
         # calculate num recalibration samples based on score drop percentage
-        if new_score < score:
-            # probably want to keep a moving average of score, then we can calculate recaliberation samples from
-            # score difference / average score    
-            drop_percent = abs(new_score / score - 1)
-            recalibration_samples = max(1, int(round(drop_percent * recaliberation_factor)))
+        if new_score < score and recaliberation_factor > 0:
+            if extra_decay_on_drop:
+                grad *= 1 - grad_decay
+            drop = abs(new_score / score - 1)
+            extra_iters = max(1, int(round(drop * recaliberation_factor)))
+        else:
+            extra_iters = 0
 
         # set score after calculating score delta
         score = new_score
@@ -124,7 +130,7 @@ def train(
         pyplot.plot(score_history, linewidth=0.35)
         pyplot.savefig('score history.png')
 
-        if score > best_score:
+        if score > best_score * (1 + min_delta):
             best_score = score
             iters_since_last_best = 0
             lr_reduce_wait = 0
@@ -132,14 +138,14 @@ def train(
             iters_since_last_best += 1
             lr_reduce_wait += 1
 
-            if lr_reduce_wait >= patience / 2:
-                # allows for more patience if algo is still finding new bests at lower LRs
-                if base_est_iters > 1:
-                    base_est_iters -= 1
-                
+            if lr_reduce_wait >= int(patience / 2):
+                if est_samples > est_samples_floor:
+                    est_samples -= est_samples_floor
+
                 patience += patience_inc
                 lr /= lr_reduce_factor
                 lr_reduce_wait = 0
 
             if iters_since_last_best >= patience:
-                return score_history
+                return score_history, model
+
