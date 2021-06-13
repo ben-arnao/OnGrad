@@ -11,13 +11,11 @@ def train(
         model,
 
         ### grad params ###
-        grad_decay=0.1,
         noise_stddev=0.01,  # standard deviation of the noise used to estimate the gradient
-        init_est_samples=10,
-        decay_grad_every_x_samples=10,
+        init_est_samples=15,
+        grad_decay_factor=100,
         recaliberation_factor=25,
         est_samples_floor=1,
-        extra_decay_on_drop=False,
 
         ### patience params ###
         patience=20,
@@ -27,9 +25,9 @@ def train(
 
         ### step/weight params ###
         step_clip_factor=3,
-        init_lr=0.1,
-        weight_decay=0.1,
-):
+        init_lr=3,
+        weight_decay=0.1):
+    
     # get baseline
     best_score = get_episode_score(model)
 
@@ -77,22 +75,12 @@ def train(
     lr_reduce_wait = 0
     est_samples = init_est_samples
     extra_iters = 0
-    tot_est_samples = 0
-    decay_grad_next_iter = False
 
     while True:
-        if decay_grad_next_iter:
-            grad *= 1 - grad_decay
-            decay_grad_next_iter = False
-
+        
         # accumlate samples for gradient estimate
         for _ in range(est_samples + extra_iters):
             grad = add_sample_to_grad_estimate(grad)
-            tot_est_samples += 1
-
-            # decay gradient to prevent it from stagnating when gradient is neutral
-            if tot_est_samples % decay_grad_every_x_samples == 0:
-                decay_grad_next_iter = True
 
         # calculate step
         step = grad * ((noise_stddev * lr) / np.mean(np.abs(grad)))
@@ -102,6 +90,12 @@ def train(
 
         # calculate average step magnitude for use in determining weight decay factor
         step_mag = np.mean(np.absolute(step))
+        
+        # decay gradient based on step size
+        grad_decay_perc = grad_decay_factor * step_mag
+        if grad_decay_perc > 1:
+            grad_decay_perc = 1
+        grad *= 1 - grad_decay_perc
 
         # get step score
         new_score = get_step_score(model, step)
@@ -114,8 +108,6 @@ def train(
 
         # calculate num recalibration samples based on score drop percentage
         if new_score < score and recaliberation_factor > 0:
-            if extra_decay_on_drop:
-                grad *= 1 - grad_decay
             drop = abs(new_score / score - 1)
             extra_iters = max(1, int(round(drop * recaliberation_factor)))
         else:
@@ -140,7 +132,7 @@ def train(
 
             if lr_reduce_wait >= int(patience / 2):
                 if est_samples > est_samples_floor:
-                    est_samples -= est_samples_floor
+                    est_samples -= 1
 
                 patience += patience_inc
                 lr /= lr_reduce_factor
