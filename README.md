@@ -19,7 +19,7 @@ OnGrad takes a step back and incorporates a novel way of calculating gradients t
 
 We start out accumulating more samples per step when step size is high and gradient changes more rapidly, and scale it down as step size gets lower and gradient doesn't change as rapidly, and therefore we don't need as many estimates to maintain a fresh and accurate estimate.
 
-We also decay the gradient estimate each step, to ensure we get fresh estimates but mainly to ensure that existing gradient estimates don't stagnate at an old value when the current gradient is close to 0.
+We also decay the gradient estimate each step, to ensure we get fresh estimates but mainly to ensure that existing gradient estimates don't stagnate at an old value when the current gradient is close to 0. We decay the gradient by a factor of step size, because the bigger steps that are taken, the more the gradient will be changing.
 
 Despite the notion that we need tens and thousands of samples to estimate gradients properly, I've found that estimating gradients this way only requires a fraction of the samples to obtain a gradient estimate good enough that we can traverse the score space well into very high optima.
 
