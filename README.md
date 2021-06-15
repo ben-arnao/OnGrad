@@ -17,23 +17,23 @@ One such method that was proposed to solve some of these shortcomings is Natural
 
 OnGrad takes a step back and incorporates a novel way of calculating gradients that carries over from step to step. We accumulate sample score percent deltas in an additive manner. When it comes to gradient, all we care about is relative magnitude, the scale is irrelevant. One can also assume gradient smoothly transforms throughout the optimization trajectory, such that having a base from the previous step to build onto, can speed up estimate saturation (the point at which, minus noise, the estimate does not change).
 
-We start out accumulating more samples per step when step size is high and gradient changes more rapidly, and scale it down as step size gets lower and gradient doesn't change as rapidly, and therefore we don't need as many estimates to maintain a fresh and accurate estimate.
+We start out accumulating more samples per step when step size is high, gradient changes more rapidly, and we want to ensure we lead ourselves into better optima, and then scale it down as step size gets lower and gradient doesn't change as rapidly, and therefore we don't need as many estimates to maintain a fresh and accurate estimate.
 
-We also decay the gradient estimate each step, to ensure we get fresh estimates but mainly to ensure that existing gradient estimates don't stagnate at an old value when the current gradient is close to 0. We decay the gradient by a factor of step size, because the bigger steps that are taken, the more the gradient will be changing.
+We also decay the gradient estimate each step, to ensure we get fresh estimates but also to ensure that existing gradient estimates don't stagnate at an old value when the current gradient is close to 0. We decay the gradient by a factor of step size, because the bigger steps that are taken, the more the gradient will be changing.
 
 Despite the notion that we need tens and thousands of samples to estimate gradients properly, I've found that estimating gradients this way only requires a fraction of the samples to obtain a gradient estimate good enough that we can traverse the score space well into very high optima.
 
 We also make step size as a factor of noise size, as our gradient estimate's scope is bounded by the size of the noise. That is to say that for example, step size might start out such that the average step magnitude is the standard deviation of the noise multiplied by 3.
 
-Likewise we make weight decay a factor of the step taken as well. Such that every iteration, the percent that weights are decayed by, is scaled by how big the step size is.
+Likewise we make weight decay a factor of the step taken as well. Such that every iteration, the percent that weights are decayed by, is scaled by the magnitude of the step size is.
 
-Steps are then clipped as a factor of noise as well to not exceed the actual noise magnitude by too much. Although one can see steps higher than the value of the noise as a sign of confidence in this direction, we want to find a middle ground where we take big steps if there is a high enough confidence (big gradient), but do not bite off more than we can chew and risk overshooting into suboptimal landscape that can be hard and time consuming to recover from.
+Steps are then clipped as a factor of noise as well to not exceed the actual noise magnitude by too much.
 
 As mentioned previously, one of the main issues I found with NES is that it would be wildly unstable as you reached better optima and the algorithm was unable to escape such patterns and ascend into better optima.
 
 OnGrad attempts to solve this issue in two ways...
 
-1) We add extra "recalibration" samples to our estimate after our score drops. This scales with the percent score drop, such that the bigger the drop, the more samples accumulated for the next gradient estimate. One wants to be cautious here, as sometimes a drop is normal as we traverse into better optima, so setting the recalibration samples too high can cause optimization to lose it's momentum.
+1) We add extra "recalibration" samples to our estimate after our score drops. This scales with the percent score drop, such that the bigger the drop, the more samples accumulated for the next gradient estimate. One wants to be cautious here, as sometimes a drop is normal as we traverse into better optima, so setting the recalibration samples too high can cause optimization to lose it's momentum and also cause unnecessary computations.
 
 2) A tried and true tactic, we also lower step size as we go on. However, we also increase the patience used for reducing step size each time the step size is reduced, allowing more steps for optimization to climb back into better optima with smaller steps. I've found that gradually reducing LR (by a factor of 2 for example) works the best here and that increasing the LR patience with each LR reduction is critical to the success of the algorithm.
 
