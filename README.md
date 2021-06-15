@@ -25,7 +25,7 @@ Despite the notion that we need tens and thousands of samples to estimate gradie
 
 We also make step size as a factor of noise size, as our gradient estimate's scope is bounded by the size of the noise. That is to say that for example, step size might start out such that the average step magnitude is the standard deviation of the noise multiplied by 3.
 
-Likewise we make weight decay a factor of the step taken as well. Such that every iteration, the percent that weights are decayed by, is scaled by the magnitude of the step size is.
+Likewise we make weight decay a factor of the step taken as well. Such that every iteration, the percent that weights are decayed by, is scaled by the magnitude of the step size.
 
 Steps are then clipped as a factor of noise as well to not exceed the actual noise magnitude by too much.
 
