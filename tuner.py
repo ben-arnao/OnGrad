@@ -26,7 +26,7 @@ def train(
 
         ### step/weight params ###
         step_clip_factor=3,
-        init_lr=3,
+        init_lr=1,
         weight_decay=0.1):
     
     # get baseline
