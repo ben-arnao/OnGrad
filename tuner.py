@@ -11,9 +11,10 @@ def train(
         model,
 
         ### grad params ###
-        noise_stddev=0.01,  # standard deviation of the noise used to estimate the gradient
+        noise_stddev=0.01,
         init_est_samples=15,
         grad_decay_factor=100,
+        decay_noise=False,
         recaliberation_factor=25,
         est_samples_floor=1,
 
@@ -30,6 +31,10 @@ def train(
     
     # get baseline
     best_score = get_episode_score(model)
+    
+    if best_score <= 0:
+        # retry weight init, or manually adjust initial weights to produce actions/valid scores
+        raise Exception('Model weights are not initialized to a valid starting point')
 
     # setup score history tracking
     score_history = []
@@ -77,7 +82,7 @@ def train(
     extra_iters = 0
 
     while True:
-        
+
         # accumlate samples for gradient estimate
         for _ in range(est_samples + extra_iters):
             grad = add_sample_to_grad_estimate(grad)
@@ -90,7 +95,7 @@ def train(
 
         # calculate average step magnitude for use in determining weight decay factor
         step_mag = np.mean(np.absolute(step))
-        
+
         # decay gradient based on step size
         grad_decay_perc = grad_decay_factor * step_mag
         if grad_decay_perc > 1:
@@ -136,6 +141,8 @@ def train(
 
                 patience += patience_inc
                 lr /= lr_reduce_factor
+                if decay_noise:
+                    noise_stddev /= lr_reduce_factor
                 lr_reduce_wait = 0
 
             if iters_since_last_best >= patience:
