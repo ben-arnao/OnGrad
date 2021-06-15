@@ -44,6 +44,9 @@ The end result is a RIL algorithm that from my experience tackles all of these i
 The user needs to provide 4 parameters...
 
 ```get_model_params``` which takes a model, and outputs a flattened list of model parameters
+
 ```set_model_params``` which takes a model and a flattened list of model parameters, and sets the model with the provided parameters
+
 ```get_episode_score``` this is a function which accepts a model as a parameter, and output the score of this model (ex. final episode score)
+
 ```model``` this is the supplied model (can be tensorflow, pytorch, etc.)
