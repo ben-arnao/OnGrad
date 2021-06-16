@@ -1,6 +1,8 @@
 # OnGrad (online gradient estimation)
 A derivative free reinforcement learning algorithm
 
+# Motivation for an alternative
+
 State of the art reinforcement learning methods like PPO or SAC can leave a lot to be desired when used on complex problems to achieve competitive performance. There are a few big shortcomings.
 
 1) A differentiable loss function is usually required in some capacity. Many real life problems either are not differentiable or if there does exist a differentiable loss function for the final episode performance with respect to model parameters, the loss function actually used is probably suboptimal at best. That is to say, that a decrease in loss does not always translate to an increase in final episode performance in a direct manner. One can expect a loose correlation, but not much more. This might be fine, if we could expect zero error predictions (more or less using a lookup table where we know the exact value distribution for every time step), but this is not reality, and we should always be expecting only an approximation. This sort of disconnect can be problematic for many reasons. Namely that we are not actually optimizing performance, but rather some auxiliary function that only has a correlation with performance.
