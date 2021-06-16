@@ -3,21 +3,23 @@ A derivative free reinforcement learning algorithm
 
 # Motivation for an alternative
 
-State of the art reinforcement learning methods like PPO or SAC can leave a lot to be desired when used on complex problems to achieve competitive performance. There are a few big shortcomings.
+State of the art reinforcement learning methods like PPO or SAC can leave a lot to be desired when used on complex problems to achieve competitive performance. There are a few big shortcomings...
 
-1) A differentiable loss function is usually required in some capacity. Many real life problems either are not differentiable or if there does exist a differentiable loss function for the final episode performance with respect to model parameters, the loss function actually used is probably suboptimal at best. That is to say, that a decrease in loss does not always translate to an increase in final episode performance in a direct manner. One can expect a loose correlation, but not much more. This might be fine, if we could expect zero error predictions (more or less using a lookup table where we know the exact value distribution for every time step), but this is not reality, and we should always be expecting only an approximation. This sort of disconnect can be problematic for many reasons. Namely that we are not actually optimizing performance, but rather some auxiliary function that only has a correlation with performance.
+1) A differentiable loss function is usually required to model reward distributions. Many real life problems either are not differentiable or if there does exist a differentiable loss function for the final episode performance with respect to model parameters, the loss function actually used is probably suboptimal at best. That is to say, that a decrease in loss does not always translate to an increase in final episode performance in a direct manner. One can expect a loose correlation, but not much more. This might be fine if we could expect zero error predictions (more or less using a lookup table to know the exact value distribution for every time step), but this is not reality, and we should always be expecting only an approximation. This sort of disconnect can be problematic for many reasons... mainly that we are not actually optimizing performance directly but rather some auxiliary function that only has a correlation with performance.
 
-2) These methods usually require the practitioner to guess at or arrive at by trial and error a good value for a single static time horizon value (alpha). This may be fine if we want something decent, but to achieve high-end competitive performance, a model will more than likely need to consider a wide variety of time horizons at varying points of play.
+2) These methods usually require the practitioner to guess at or arrive at by trial and error a good value for a single static time horizon value (alpha). This may be fine if we want something decent or good enough, but to achieve high-end competitive performance, a model will more than likely need to consider a wide variety of time horizons at varying points of play.
 
-3) They can rely on tedious exploration strategies and backpropagation of reward which require many samples.
+3) They can rely on tedious exploration strategies and backpropagation of reward which require many samples/episodes.
 
-4) They can be overly complex. Some even require specialized methodologies to deal with a particular use case.
+4) They can be overly complex and easy to break. Some even require specialized methodologies to deal with a particular use case.
 
 One such method that was proposed to solve some of these shortcomings is Natural Evolutionary Strategies (NES) https://www.jmlr.org/papers/volume15/wierstra14a/wierstra14a.pdf. NES takes a few big steps in the right direction but ultimately falls short in a few key areas. NES is very slow, requiring in some cases tens and thousands of samples to estimate the gradient for just a single step. It also suffers from instability as optimization gets into tougher and higher score areas, preventing optimization from reaching into higher maxima.
 
 # OnGrad explained
 
 OnGrad incorporates a novel way of calculating gradients. Noise in the weights is scored similar to NES, but this time we calculate the percentage advantage between postive and negative noise. We use this, in combination with the magnitude of the per-parameter noise, to calculate a single sample to be added to our running estimate of the gradient.
+
+Since we operate directly on the gradient of final epsiode score (what we really care about), we eliminate all of the complications and messiness that come with trying to model reward distribution at a per time-step/action level.
 
 We can estimate the gradient in an additve manner because when it comes to gradient, all we care about is relative magnitude, the scale is irrelevant. Our step is always scaled so that the mean of the step for every weight always equals the current LR, ensuring that general step size and gradient magnitude is decoupled.
 
