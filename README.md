@@ -17,9 +17,9 @@ One such method that was proposed to solve some of these shortcomings is Natural
 
 # OnGrad explained
 
-OnGrad incorporates a novel way of calculating gradients. Noise in the weight is scored similar to NES, but this time we calculate the percentage advantage between postive and negative noise. We use this, in combination with the magnitude of the noise, to calculate a single sample to be added to our running estimate of the gradient.
+OnGrad incorporates a novel way of calculating gradients. Noise in the weights is scored similar to NES, but this time we calculate the percentage advantage between postive and negative noise. We use this, in combination with the magnitude of the per-parameter noise, to calculate a single sample to be added to our running estimate of the gradient.
 
-We can estimate the gradient in an additve manner because when it comes to gradient, all we care about is relative magnitude, the scale is irrelevant. Our step is always scaled so that the mean of the step for every weight always equals the LR, ensuring that general step size and gradient magnitude is decoupled.
+We can estimate the gradient in an additve manner because when it comes to gradient, all we care about is relative magnitude, the scale is irrelevant. Our step is always scaled so that the mean of the step for every weight always equals the current LR, ensuring that general step size and gradient magnitude is decoupled.
 
 This estimate is retained from step to step, eliminating the need to estimate the gradient from scratch each step. When the step size is bigger more samples are used in the estimate since it can be assumed that gradient changes more rapidly in comparison to smaller steps, where we do not need as many samples per step.
 
