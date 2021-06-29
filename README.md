@@ -21,7 +21,7 @@ OnGrad incorporates a novel way of calculating gradients. Noise in the weights i
 
 Since we operate directly on the gradient of final epsiode score (what we really care about), we eliminate all of the complications and messiness that come with trying to model reward distribution at a per time-step/action level.
 
-We can estimate the gradient in an additve manner because when it comes to gradient, all we care about is relative magnitude, the scale is irrelevant. Our step is always scaled so that the mean of the step for every weight always equals the current LR, ensuring that general step size and gradient magnitude is decoupled.
+We can estimate the gradient in an additive manner because when it comes to gradient, all we care about is relative magnitude, the scale is irrelevant. Our step is always scaled so that the mean of the step for every weight always equals the current LR, ensuring that general step size and gradient magnitude is decoupled.
 
 This estimate is retained from step to step, eliminating the need to estimate the gradient from scratch each step. When the step size is bigger more samples are used in the estimate since it can be assumed that gradient changes more rapidly in comparison to smaller steps, where we do not need as many samples per step.
 
