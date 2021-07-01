@@ -12,13 +12,13 @@ def train(
 
         ### grad params ###
 
-        noise_stddev=0.01,  # the standard deviation of noise used for estimating gradient
+        noise_stddev=0.02,  # the standard deviation of noise used for estimating gradient
         # values recommendations: near 0.1-0.2 (ex. 0.005 - 0.3)
 
-        init_est_samples=15,  # initial amount of samples used to calculating gradient for step
+        init_est_samples=10,  # initial amount of samples used to calculating gradient for step
         # values recommendations: 5, 10, 15+ (use larger values for more complex problems)
 
-        grad_decay_factor=100,  # this can be seen as a form of momentum used in calculating gradients
+        grad_decay_factor=50,  # this can be seen as a form of momentum used in calculating gradients
         # values recommendations: 1-1000 (larger value = lower momentum, more reactive estimate)
 
         est_samples_floor=1,  # minimum amount of sample used to calculate gradient
@@ -29,18 +29,18 @@ def train(
         # values options: 'additive' or 'multiplicative'
 
         ### patience params ###
-        patience=20,
+        patience=10,
         patience_inc=10,
         min_delta=0.01,
 
-        lr_reduce_factor=2,  # factor to reduce average step size by (reduce LR)
+        lr_reduce_factor=3,  # factor to reduce average step size by (reduce LR)
         # values recommendations: keep at default
 
         ### step/weight params ###
         step_clip_factor=3,  # ensure that not step exceeds that standard dev of noise * X
         # values recommendations: keep at default
 
-        init_lr=1,  # initial learn rate (factor)
+        init_lr=0.5,  # initial learn rate (factor)
         # values recommendations: 0.1 or 1
 
         weight_decay=0.1  # weight decay *factor*. different from regular weight decay
