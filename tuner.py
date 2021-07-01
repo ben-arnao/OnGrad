@@ -11,38 +11,41 @@ def train(
         model,
 
         ### grad params ###
-        
+
         noise_stddev=0.01,  # the standard deviation of noise used for estimating gradient
         # values recommendations: near 0.1-0.2 (ex. 0.005 - 0.3)
-        
+
         init_est_samples=15,  # initial amount of samples used to calculating gradient for step
         # values recommendations: 5, 10, 15+ (use larger values for more complex problems)
-        
+
         grad_decay_factor=100,  # this can be seen as a form of momentum used in calculating gradients
         # values recommendations: 1-1000 (larger value = lower momentum, more reactive estimate)
-        
+
         est_samples_floor=1,  # minimum amount of sample used to calculate gradient
         # values recommendations: keep at default
-        
+
+        grad_estimate_mode='additive',  # when using multiplicative, a reward increase of 10 -> 100 should be viewed 
+        # similarly as a change of 100 -> 1000. (multiplicative only works with positive reward)
+        # values options: 'additive' or 'multiplicative'
+
         ### patience params ###
         patience=20,
         patience_inc=10,
         min_delta=0.01,
-        
+
         lr_reduce_factor=2,  # factor to reduce average step size by (reduce LR)
         # values recommendations: keep at default
 
         ### step/weight params ###
         step_clip_factor=3,  # ensure that not step exceeds that standard dev of noise * X
         # values recommendations: keep at default
-        
+
         init_lr=1,  # initial learn rate (factor)
         # values recommendations: 0.1 or 1
-        
-        weight_decay=0.1   # weight decay *factor*. different from regular weight decay
+
+        weight_decay=0.1  # weight decay *factor*. different from regular weight decay
         # values recommendations: 0.01 -> 1
 ):
-    
     # get baseline
     best_score = get_episode_score(model)
 
@@ -66,9 +69,8 @@ def train(
         score = get_episode_score(model)
         set_model_params(model, theta)
 
-        if score <= 0:
-            raise NotImplementedError('Does not currently handle negative scores or 0. consider adding a baseline and'
-                                      'clipping anything still negative to 0')
+        if score <= 0 and grad_estimate_mode == 'multiplicative':
+            raise NotImplementedError('multiplicative grad estimate mode does not accept negative score values')
         return score
 
     def add_sample_to_grad_estimate(grad):
@@ -81,10 +83,16 @@ def train(
 
         # keep running total for gradient estimate
         if pos_rew != neg_rew:
-            grad = np.where(pos_rew > neg_rew, grad + v * (pos_rew / neg_rew - 1), grad - v * (neg_rew / pos_rew - 1))
-
-        # eventually probably want to use score difference as opposed to percent drop so we can use negative scores
-        # we will need to normalize gradient before step so that the scale of score doesn't affect step size
+            if grad_estimate_mode == 'multiplicative':
+                grad = np.where(pos_rew > neg_rew, 
+                                grad + v * (pos_rew / neg_rew - 1), 
+                                grad - v * (neg_rew / pos_rew - 1))
+            elif grad_estimate_mode == 'additive':
+                grad = np.where(pos_rew > neg_rew, 
+                                grad + v * (pos_rew - neg_rew), 
+                                grad - v * (neg_rew - pos_rew))
+            else:
+                raise ValueError('did not supply a valid option for \'grad_estimate_mode\'')
 
         return grad
 
