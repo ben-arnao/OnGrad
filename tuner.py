@@ -93,6 +93,9 @@ def train(
                                 grad - v * (neg_rew - pos_rew))
             else:
                 raise ValueError('did not supply a valid option for \'grad_estimate_mode\'')
+        else:
+            print('noise in weights did not produce a change in reward. if you see too many of these messages '
+                  'at the beginning of training, consider starting with bigger noise')
 
         return grad
 
@@ -124,7 +127,7 @@ def train(
         grad *= 1 - grad_decay_perc
 
         # get step score
-        new_score = get_step_score(model, step)
+        score = get_step_score(model, step)
 
         # take step
         set_model_params(model, get_model_params(model) + step)
@@ -132,11 +135,10 @@ def train(
         # decay weights
         set_model_params(model, get_model_params(model) * (1 - weight_decay * step_mag))
 
-        # set score after calculating score delta
-        score = new_score
         score_history.append(score)
+        print('step:', len(score_history), 'score:', score)
 
-        # plot train/test history
+        # plot score history
         pyplot.clf()
         pyplot.plot(score_history, linewidth=0.35)
         pyplot.savefig('score history.png')
