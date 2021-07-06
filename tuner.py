@@ -110,6 +110,10 @@ def train(
         # accumlate samples for gradient estimate
         for _ in range(est_samples):
             grad = add_sample_to_grad_estimate(grad)
+        
+        # if grad estimate is invalid (noise scores are equal), keep collecting samples until we get a valid sample
+        while grad.any() == 0:
+            grad = add_grad_estimate(grad, grad_noise)
 
         # calculate step
         step = grad * ((noise_stddev * lr) / np.mean(np.abs(grad)))
