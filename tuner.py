@@ -11,7 +11,7 @@ def train(
         model,
 
         ### grad params ###
-
+        
         noise_stddev=0.02,  # the standard deviation of noise used for estimating gradient
         # values recommendations: near 0.1-0.2 (ex. 0.005 - 0.3)
 
@@ -29,6 +29,7 @@ def train(
         # values options: 'additive' or 'multiplicative'
 
         ### patience params ###
+        
         patience=10,
         patience_inc=10,
         min_delta=0.01,
@@ -37,15 +38,24 @@ def train(
         # values recommendations: keep at default
 
         ### step/weight params ###
+        
         step_clip_factor=3,  # ensure that not step exceeds that standard dev of noise * X
         # values recommendations: keep at default
 
         init_lr=0.5,  # initial learn rate (factor)
         # values recommendations: 0.1 or 1
 
-        weight_decay=0.1  # weight decay *factor*. different from regular weight decay
+        weight_decay=0.1,  # weight decay *factor*. different from regular weight decay
         # values recommendations: 0.01 -> 1
-):
+        
+        ### other ###
+
+        init_iters=100  # if noise in weights is unable to produce a score difference after X attempts, 
+        # throw an error. For many problems, this should not be relevant. For problems where we expect the environment 
+        # to require many tries to generate varying scores, this can be increased. 
+        # Otherwise, see the error thrown during initialization.
+        ):
+    
     # get baseline
     best_score = get_episode_score(model)
 
@@ -84,12 +94,12 @@ def train(
         # keep running total for gradient estimate
         if pos_rew != neg_rew:
             if grad_estimate_mode == 'multiplicative':
-                grad = np.where(pos_rew > neg_rew, 
-                                grad + v * (pos_rew / neg_rew - 1), 
+                grad = np.where(pos_rew > neg_rew,
+                                grad + v * (pos_rew / neg_rew - 1),
                                 grad - v * (neg_rew / pos_rew - 1))
             elif grad_estimate_mode == 'additive':
-                grad = np.where(pos_rew > neg_rew, 
-                                grad + v * (pos_rew - neg_rew), 
+                grad = np.where(pos_rew > neg_rew,
+                                grad + v * (pos_rew - neg_rew),
                                 grad - v * (neg_rew - pos_rew))
             else:
                 raise ValueError('did not supply a valid option for \'grad_estimate_mode\'')
@@ -104,16 +114,26 @@ def train(
     iters_since_last_best = 0
     lr_reduce_wait = 0
     est_samples = init_est_samples
+    
+    # ensure noise is able to produce varying scores
+    i = 0
+    while grad.any() == 0:
+        grad = add_sample_to_grad_estimate(grad)
+        i += 1
+        if i >= init_iters:
+            raise Exception('Supplied model is not learnable as noise in weights was not able to produce varying '
+                            'scores after {0} attempts. The score difference is used to estimate the gradient. '
+                            'Consider increasing the std dev of the noise, or initializing the model with weights that '
+                            'produce different scores, even if occasionally. For example, one technique might be to '
+                            'pre-train the model on varying samples with random actions to simulate an epsilon greedy '
+                            'policy). Note: This is only required to get optimization up and running, and should be '
+                            'irrelevant after optimization starts.'.format(init_iters))
 
     while True:
 
         # accumlate samples for gradient estimate
         for _ in range(est_samples):
             grad = add_sample_to_grad_estimate(grad)
-        
-        # if grad estimate is invalid (noise scores are equal), keep collecting samples until we get a valid sample
-        while grad.any() == 0:
-            grad = add_grad_estimate(grad, grad_noise)
 
         # calculate step
         step = grad * ((noise_stddev * lr) / np.mean(np.abs(grad)))
