@@ -61,10 +61,6 @@ def train(
     # get baseline
     best_score = get_episode_score(model)
 
-    if best_score <= 0:
-        # retry weight init, or manually adjust initial weights to produce actions/valid scores
-        raise Exception('Model weights are not initialized to a valid starting point')
-
     # setup score history tracking
     score_history = []
 
@@ -82,7 +78,7 @@ def train(
         set_model_params(model, theta)
 
         if score <= 0 and grad_estimate_mode == 'multiplicative':
-            raise NotImplementedError('multiplicative grad estimate mode does not accept negative score values')
+            raise ValueError('multiplicative grad estimate mode does not accept negative score values')
         return score
 
     def add_sample_to_grad_estimate(grad):
@@ -106,8 +102,7 @@ def train(
             else:
                 raise ValueError('did not supply a valid option for \'grad_estimate_mode\'')
         else:
-            print('noise in weights did not produce a change in reward. if you see too many of these messages '
-                  'at the beginning of training, consider starting with bigger noise')
+            print('Noise in weights did not produce a change in reward.')
 
         return grad
 
