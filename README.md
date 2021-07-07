@@ -17,7 +17,7 @@ One such method that was proposed to solve some of these shortcomings is Natural
 
 # OnGrad explained
 
-OnGrad incorporates a novel way of calculating gradients. Noise in the weights is scored similar to NES, but this time we calculate the percentage advantage between postive and negative noise. We use this, in combination with the magnitude of the per-parameter noise, to calculate a single sample to be added to our running estimate of the gradient.
+OnGrad incorporates a novel way of calculating gradients. Noise in the weights is scored similar to NES, but this time we calculate the advantage between postive and negative noise (either additively or multiplicatively). We use this, in combination with the magnitude of the per-parameter noise, to calculate a single sample to be added to our running estimate of the gradient.
 
 Since we operate directly on the gradient of final epsiode score (what we really care about), we eliminate all of the complications and messiness that come with trying to model reward distribution at a per time-step/action level.
 
