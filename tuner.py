@@ -11,12 +11,15 @@ def train(
         model,
 
         ### grad params ###
-        
+
         noise_stddev=0.02,  # the standard deviation of noise used for estimating gradient
         # values recommendations: near 0.1-0.2 (ex. 0.005 - 0.3)
 
         init_est_samples=10,  # initial amount of samples used to calculating gradient for step
         # values recommendations: 5, 10, 15+ (use larger values for more complex problems)
+
+        est_samples_reduce=1,  # amount to reduce est_samples by each LR reduce step
+        # values recommendations: 1-5. Increasing this can improve sample efficiency but may harm performance
 
         grad_decay_factor=50,  # this can be seen as a form of momentum used in calculating gradients
         # values recommendations: 1-1000 (larger value = lower momentum, more reactive estimate)
@@ -24,12 +27,12 @@ def train(
         est_samples_floor=1,  # minimum amount of sample used to calculate gradient
         # values recommendations: keep at default
 
-        grad_estimate_mode='additive',  # when using multiplicative, a reward increase of 10 -> 100 should be viewed 
+        grad_estimate_mode='additive',  # when using multiplicative, a reward increase of 10 -> 100 should be viewed
         # similarly as a change of 100 -> 1000. (multiplicative only works with positive reward)
         # values options: 'additive' or 'multiplicative'
 
         ### patience params ###
-        
+
         patience=10,
         patience_inc=10,
         min_delta=0.01,
@@ -38,7 +41,7 @@ def train(
         # values recommendations: keep at default
 
         ### step/weight params ###
-        
+
         step_clip_factor=3,  # ensure that not step exceeds that standard dev of noise * X
         # values recommendations: keep at default
 
@@ -47,15 +50,14 @@ def train(
 
         weight_decay=0.1,  # weight decay *factor*. different from regular weight decay
         # values recommendations: 0.01 -> 1
-        
+
         ### other ###
 
-        init_iters=100  # if noise in weights is unable to produce a score difference after X attempts, 
-        # throw an error. For many problems, this should not be relevant. For problems where we expect the environment 
-        # to require many tries to generate varying scores, this can be increased. 
+        init_iters=100  # if noise in weights is unable to produce a score difference after X attempts,
+        # throw an error. For many problems, this should not be relevant. For problems where we expect the environment
+        # to require many tries to generate varying scores, this can be increased.
         # Otherwise, see the error thrown during initialization.
-        ):
-    
+):
     # get baseline
     best_score = get_episode_score(model)
 
@@ -114,7 +116,7 @@ def train(
     iters_since_last_best = 0
     lr_reduce_wait = 0
     est_samples = init_est_samples
-    
+
     # ensure noise is able to produce varying scores
     i = 0
     while grad.any() == 0:
@@ -177,7 +179,7 @@ def train(
 
             if lr_reduce_wait >= int(patience / 2):
                 if est_samples > est_samples_floor:
-                    est_samples -= 1
+                    est_samples -= est_samples_reduce
 
                 patience += patience_inc
                 lr /= lr_reduce_factor
