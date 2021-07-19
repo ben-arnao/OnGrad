@@ -17,31 +17,33 @@ One such method that was proposed to solve some of these shortcomings is Natural
 
 # OnGrad explained
 
-OnGrad incorporates a novel way of calculating gradients. Noise in the weights is scored similar to NES, but this time we calculate the advantage between postive and negative noise (either additively or multiplicatively). We use this, in combination with the magnitude of the per-parameter noise, to calculate a single sample to be added to our running estimate of the gradient.
+OnGrad incorporates a novel way of calculating gradients to improve sample efficiency and and also get quality estimates.
 
-Since we operate directly on the gradient of final epsiode score (what we really care about), we eliminate all of the complications and messiness that come with trying to model reward distribution at a per time-step/action level.
+* Noise in the weights is scored similar to NES. We use the score of the positive and negative noise to determine the sign for a single sample. We accumulate many samples to get an average of which direction the weights should move in. The "stronger" the signal in one direction over the other is, the bigger the gradient and therefore the bigger step we will take. Conversely if the direction is indecisive and the average sign is near 0, the gradient will be smaller and a smaller step will be taken.
 
-We can estimate the gradient in an additive manner because when it comes to gradient, all we care about is relative magnitude, the scale is irrelevant. Our step is always scaled so that the mean of the step for every weight always equals the current LR, ensuring that general step size and gradient magnitude is decoupled.
+There are a few nuances..
 
-This estimate is retained from step to step, eliminating the need to estimate the gradient from scratch each step. When the step size is bigger more samples are used in the estimate since it can be assumed that gradient changes more rapidly in comparison to smaller steps, where we do not need as many samples per step.
+1) Unlike the original NES paper where the estimate is recalculated from scratch every step, OnGrad assumes the gradient for the next step will be more similar to the last iteration rather than dissimilar, and thus we use the last estimate as a base for the next estimate.
 
-The gradient estimate is decayed (by a factor of step size), to ensure we get fresh estimates but also to ensure that existing gradient estimates don't stagnate at an old value when the current gradient is close to 0.
+Probably the biggest improvement as far as sample efficiency is concerned- only the amount of samples needed to update the estimate are calculated, drastically improving sample efficiency. Previously, a static amount of samples was calculated for every step without really knowing if this number was too little for a good estimate or too many such that extra samples did not improve the quality of the estimate.
 
-Despite the notion that we need tens and thousands of samples to estimate gradients properly, I've found that estimating gradients this way only requires a fraction of the samples to obtain a gradient estimate good enough that we can traverse the score space well into very high optima.
+OnGrad solves this issue by tracking the upper and lower bounds of the gradient estimate moving average. We keep accumulating samples and adding to the estimate, until the estimate is deemed “stationary enough”. This is defined by tracking the percent of estimates that remain within a percentage of the current high and low bounds for a single estimation step. If this percent goes above a threshold, we say that the estimate is good enough and take the step. This means that for some steps where the true gradient does not change very much, not many samples need to be calculated. For steps however where there is a lot of change, we can also dynamically calculate more samples to ensure we get the same quality estimate.
 
-We also make step size a factor of noise size, as our gradient estimate's scope is bounded by the size of the noise. That is to say that for example, step size might start out such that the average step magnitude is the standard deviation of the noise. This is another way to decouple parameters and ensure that one thinks of step size as a factor of the noise size (because gradient is only estimated within the scope of the noise)
+2) The other nuance of OnGrad's gradient estimation is that momentum is scaled by the magnitude of the random noise. Smaller noise will result in a larger momentum, and therefore a smaller impact to the estimate. Conversely, larger noise means a smaller momentum, and bigger adjustment to the estimate. This is primary to ensure very small and likely insignificant noise values, do not affect the estimate as much as bigger noise will likely have an impact on the estimate.
 
-Likewise we make weight decay a factor of the step taken as well. Such that every iteration, the percent that weights are decayed by, is scaled by the magnitude of the step size.
+* Since we operate directly on the gradient of final episode score (what we really care about), we eliminate all of the complications and messiness that come with trying to model reward distribution at a per time-step/action level.
 
-Lastly, steps are then clipped as a factor of noise as well to not exceed the actual noise magnitude by too much.
+* Actual step is always scaled so that the mean of the step for every weight always equals the current LR, ensuring that general step size and gradient magnitude is decoupled.
+ 
+Despite the notion that we need tens and thousands of samples to estimate gradients properly, I've found that estimating gradients this way only requires a fraction of the samples to obtain a quality gradient estimate that we can use to traverse the score space well into very high optima.
 
-As mentioned previously, one of the main issues I found with NES is that it would be wildly unstable as you reached better optima and the algorithm was unable to escape such patterns and ascend into better optima.
+* We also make step size a factor of noise size, as our gradient estimate's scope is bounded by the size of the noise. That is to say that for example, step size might start out such that the average step magnitude is the standard deviation of the noise. This is another way to decouple parameters and ensure that one thinks of step size as a factor of the noise size (because gradient is only estimated within the scope of the noise)
 
-OnGrad attempts to solve this issue in two ways...
+* Likewise we make weight decay a factor of the step taken as well. Such that every iteration, the percent that weights are decayed by, is scaled by the magnitude of the step size.
 
-1) We add extra "recalibration" samples to our estimate after our score drops. This scales with the percent score drop, such that the bigger the drop, the more samples accumulated for the next gradient estimate. One wants to be cautious here, as sometimes a drop is normal as we traverse into better optima, so setting the recalibration samples too high can cause optimization to lose it's momentum and also cause unnecessary computations.
+* Step is clipped by a factor of noise. This is done to ensure the step does not exceed the area that we are actually estimating the gradient for.
 
-2) A tried and true tactic, we also lower step size as we go on. However, we also increase the patience used for reducing step size each time the step size is reduced, allowing more steps for optimization to climb back into better optima with smaller steps. I've found that gradually reducing LR (by a factor of 2 for example) works the best here and that increasing the LR patience with each LR reduction is critical to the success of the algorithm.
+* A simple but critical component… step size (and optionally noise size) is reduced as we go on
 
 The end result is a RIL algorithm that from my experience tackles all of these issues and does it in a simple and more intuitive way. Please try out OnGrad for yourself and please share the results!
 
@@ -56,3 +58,5 @@ The user needs to provide 4 parameters...
 ```get_episode_score``` this is a function which accepts a model as a parameter, and output the score of this model (ex. final episode score)
 
 ```model``` this is the supplied model (can be tensorflow, pytorch, etc.)
+
+
