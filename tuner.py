@@ -10,12 +10,11 @@ def train(
         set_model_params,
         get_episode_score,  # input is model, return a positive float for score
         model,
+        init_routine,  # custom routine used to initialize weights to good starting point
 
         ### grad estimate params ###
-        momentum_base=0.99,
-        grad_est_min_delta_perc=0.03,
-        adaptive_mom_ratio=0.75,
-        mom_adaptive_factor=0.01,
+        momentum=0.99,
+        grad_est_bounds_factor=1,
         grad_est_threshold=0.75,
         noise_stddev=0.02,
 
@@ -41,6 +40,9 @@ def train(
         # to require many tries to generate varying scores, this can be increased.
         # Otherwise, see the error thrown during initialization.
 ):
+    
+    init_routine(model)
+    
     # get baseline
     best_score = get_episode_score(model)
 
@@ -69,20 +71,18 @@ def train(
         pos_rew = get_step_score(model, v)
         neg_rew = get_step_score(model, -v)
 
-        # calculate momentum used to add current sample to estimate. static momentum is combined with adaptive momentum
-        # based on 'mom_adaptive_factor'
-        m = 2 - np.power(10, np.abs(v) * mom_adaptive_factor * noise_stddev)
-        m = np.where(m < 0, 0, m)
-        m = m * adaptive_mom_ratio + momentum_base * (1 - adaptive_mom_ratio)
-
-        # keep running total for gradient estimate
         if pos_rew != neg_rew and pos_rew != 0 and neg_rew != 0:
+
+            m = momentum
+
             if pos_rew > neg_rew:
                 grad = grad * m + np.sign(v) * (1 - m)
             else:
                 grad = grad * m - np.sign(v) * (1 - m)
 
-        return grad, np.mean(m)
+            return grad
+        else:
+            return None
 
     # prep variables before training
     lr = init_lr
@@ -92,7 +92,7 @@ def train(
     # ensure noise is able to produce varying scores
     i = 0
     while grad.any() == 0:
-        grad, _ = add_sample_to_grad_estimate(grad)
+        grad = add_sample_to_grad_estimate(grad)
         i += 1
         if i >= init_iters:
             raise Exception('Supplied model is not learnable as noise in weights was not able to produce varying '
@@ -114,24 +114,27 @@ def train(
 
         # here we keep accumulating samples and adding to estimate until 'grad_est_threshold' percent of gradient
         # estimate stays within 'grad_min_delta_perc' of the current bounds
+        
+        consec_no_change = 0
 
         # in other words, we keep estimating gradient until the estimate is stationary enough
         while sum(np.logical_not(np.logical_or(is_new_high, is_new_low))) / num_params < grad_est_threshold:
 
-            grad, m_avg = add_sample_to_grad_estimate(grad)
+            new_grad = add_sample_to_grad_estimate(grad)
+            if new_grad is not None:
+                grad = new_grad
+            else:
+                consec_no_change += 1
 
-            # momentum is scaled with noise magnitude. the smaller the noise, the larger the momentum and less impact
-            # this sample will have on the gradient estimate.
-            s = (1 - m_avg)
+                if consec_no_change > 25:
+                    print('estimation surface too flat (noise too small, or not able to produce varying scores)')
+                    return score_history
+                continue
 
-            is_new_high = np.where(grad > 0,
-                                   np.where(grad > grad_hi * 1 + grad_est_min_delta_perc * s, True, False),
-                                   np.where(grad > grad_hi * 1 - grad_est_min_delta_perc * s, True, False))
+            is_new_high = np.where(grad > grad_hi + grad_est_bounds_factor * (1 - momentum), True, False)
             grad_hi = np.where(is_new_high, grad, grad_hi)
 
-            is_new_low = np.where(grad < 0,
-                                  np.where(grad < grad_lo * 1 + grad_est_min_delta_perc * s, True, False),
-                                  np.where(grad < grad_lo * 1 - grad_est_min_delta_perc * s, True, False))
+            is_new_low = np.where(grad < grad_lo - grad_est_bounds_factor * (1 - momentum), True, False)
             grad_lo = np.where(is_new_low, grad, grad_lo)
 
         # calculate step
