@@ -59,6 +59,6 @@ The user needs to provide 4 parameters...
 
 ```model``` this is the supplied model (can be tensorflow, pytorch, etc.)
 
-```init_routine``` this is a weight intialization routine to ensure we start with a model where noise is able to produce varying scores.
+```init_routine``` this is a weight intialization routine to ensure we start with a model where noise is able to produce varying scores. One example might be to pre-train the model on a set of random actions to simulate an epsilon greedy policy.
 
 
