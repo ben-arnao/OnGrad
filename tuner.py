@@ -71,7 +71,7 @@ def train(
         pos_rew = get_step_score(model, v)
         neg_rew = get_step_score(model, -v)
 
-        if pos_rew != neg_rew and pos_rew != 0 and neg_rew != 0:
+        if pos_rew != neg_rew:
 
             m = momentum
 
