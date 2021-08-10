@@ -25,11 +25,11 @@ There are a few nuances..
 
 1) Unlike the original NES paper where the estimate is recalculated from scratch every step, OnGrad assumes the gradient for the next step will be more similar to the last iteration rather than dissimilar, and thus we use the last estimate as a base for the next estimate.
 
-Probably the biggest improvement as far as sample efficiency is concerned- only the amount of samples needed to update the estimate are calculated, drastically improving sample efficiency. Previously, a static amount of samples was calculated for every step without really knowing if this number was too little for a good estimate or too many such that extra samples did not improve the quality of the estimate.
+Possibly the biggest improvement as far as sample efficiency is concerned- only the amount of samples needed to update the estimate are calculated, drastically improving sample efficiency. Previously, a static amount of samples was calculated for every step without really knowing if this number was too little for a good estimate or too many such that extra samples did not improve the quality of the estimate.
 
-OnGrad solves this issue by tracking the upper and lower bounds of the gradient estimate moving average. We keep accumulating samples and adding to the estimate, until the estimate is deemed “stationary enough”. This is defined by tracking the percent of estimates that remain within a percentage of the current high and low bounds for a single estimation step. If this percent goes above a threshold, we say that the estimate is good enough and take the step. This means that for some steps where the true gradient does not change very much, not many samples need to be calculated. For steps however where there is a lot of change, we can also dynamically calculate more samples to ensure we get the same quality estimate.
+OnGrad solves this issue by tracking the upper and lower bounds of the gradient estimate moving average. We keep accumulating samples and adding to the estimate, until the estimate is deemed “stationary enough”. This is defined by tracking the percent of estimates that remain within a set bounds of the current high and low bounds for a single estimation step. If this percentage goes above a threshold, we say that the estimate is good enough and take the step. This means that for some steps where the true gradient does not change very much, not many samples need to be calculated. For steps however where there is a lot of change, we can also dynamically calculate more samples to ensure we get the same quality estimate.
 
-2) The other nuance of OnGrad's gradient estimation is that momentum is scaled by the magnitude of the random noise. Smaller noise will result in a larger momentum, and therefore a smaller impact to the estimate. Conversely, larger noise means a smaller momentum, and bigger adjustment to the estimate. This is primary to ensure very small and likely insignificant noise values, do not affect the estimate as much as bigger noise will likely have an impact on the estimate.
+The "grad_est_bounds_factor" is decoupled from momentum, making it a factor of momentum. What this means is that as momentum is higher, the bounds will proportionally be smaller. Meaning that, if we find a good value for the bounds factor, using various values for momentum will not change the "scrictness" of the bounds in the context of the algorithm.
 
 * Since we operate directly on the gradient of final episode score (what we really care about), we eliminate all of the complications and messiness that come with trying to model reward distribution at a per time-step/action level.
 
@@ -58,5 +58,7 @@ The user needs to provide 4 parameters...
 ```get_episode_score``` this is a function which accepts a model as a parameter, and output the score of this model (ex. final episode score)
 
 ```model``` this is the supplied model (can be tensorflow, pytorch, etc.)
+
+```init_routine``` this is a weight intialization routine to ensure we start with a model where noise is able to produce varying scores.
 
 
