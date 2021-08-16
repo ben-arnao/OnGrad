@@ -117,7 +117,7 @@ def train(
         consec_no_change = 0
 
         # in other words, we keep estimating gradient until the estimate is stationary enough
-        while sum(np.logical_not(np.logical_or(is_new_high, is_new_low))) / num_params == 0
+        while sum(np.logical_or(is_new_high, is_new_low)) != 0:
 
             new_grad = add_sample_to_grad_estimate(grad)
             if new_grad is not None:
