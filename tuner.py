@@ -14,7 +14,8 @@ def train(
 
         ### grad estimate params ###
         momentum=0.99,
-        grad_est_bounds_factor=1,
+        est_threshold=0.9,
+        grad_est_bounds_factor=0.001,
         noise_stddev=0.02,
 
         ### patience/reduce params ###
@@ -117,7 +118,7 @@ def train(
         consec_no_change = 0
 
         # in other words, we keep estimating gradient until the estimate is stationary enough
-        while sum(np.logical_or(is_new_high, is_new_low)) != 0:
+        while sum(np.logical_or(is_new_high, is_new_low)) / num_params > 1 - est_threshold:
 
             new_grad = add_sample_to_grad_estimate(grad)
             if new_grad is not None:
@@ -130,10 +131,10 @@ def train(
                     return score_history
                 continue
 
-            is_new_high = np.where(grad > grad_hi + grad_est_bounds_factor * (1 - momentum), True, False)
+            is_new_high = np.where(grad > grad_hi + grad_min_delta, True, False)
             grad_hi = np.where(is_new_high, grad, grad_hi)
 
-            is_new_low = np.where(grad < grad_lo - grad_est_bounds_factor * (1 - momentum), True, False)
+            is_new_low = np.where(grad < grad_lo - grad_min_delta, True, False)
             grad_lo = np.where(is_new_low, grad, grad_lo)
 
         # calculate step
