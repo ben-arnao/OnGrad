@@ -15,23 +15,17 @@ def train(
         ### grad estimate params ###
         momentum=0.99,
         est_threshold=0.9,
-        grad_est_bounds_factor=0.001,
         noise_stddev=0.02,
 
         ### patience/reduce params ###
         patience=20,
-        min_delta=0.01,
-        lr_reduce_factor=2,
-        noise_reduce_factor=1,
+        noise_reduce_factor=10,
 
         ### step/weight params ###
-        step_clip_factor=1,  # ensure that not step exceeds that standard dev of noise * X
+        step_size_factor=3,  # ensure that not step exceeds that standard dev of noise * X
         # values recommendations: keep at default
 
-        init_lr=1,  # initial learn rate (factor)
-        # values recommendations: 0.1 or 1
-
-        weight_decay=0.1,  # weight decay *factor*. different from regular weight decay
+        weight_decay_factor=0.1,  # weight decay *factor*. different from regular weight decay
         # values recommendations: 0.01 -> 1
 
         ### other ###
@@ -40,9 +34,8 @@ def train(
         # to require many tries to generate varying scores, this can be increased.
         # Otherwise, see the error thrown during initialization.
 ):
-    
     init_routine(model)
-    
+
     # get baseline
     best_score = get_episode_score(model)
 
@@ -85,9 +78,8 @@ def train(
             return None
 
     # prep variables before training
-    lr = init_lr
     iters_since_last_best = 0
-    lr_reduce_wait = 0
+    noise_reduce_wait = 0
 
     # ensure noise is able to produce varying scores
     i = 0
@@ -114,7 +106,7 @@ def train(
 
         # here we keep accumulating samples and adding to estimate until 'grad_est_threshold' percent of gradient
         # estimate stays within 'grad_min_delta_perc' of the current bounds
-        
+
         consec_no_change = 0
 
         # in other words, we keep estimating gradient until the estimate is stationary enough
@@ -131,17 +123,14 @@ def train(
                     return score_history
                 continue
 
-            is_new_high = np.where(grad > grad_hi + grad_min_delta, True, False)
+            is_new_high = np.where(grad > grad_hi, True, False)
             grad_hi = np.where(is_new_high, grad, grad_hi)
 
-            is_new_low = np.where(grad < grad_lo - grad_min_delta, True, False)
+            is_new_low = np.where(grad < grad_lo, True, False)
             grad_lo = np.where(is_new_low, grad, grad_lo)
 
         # calculate step
-        step = grad * ((noise_stddev * lr) / np.mean(np.abs(grad)))
-
-        # clip step size to try and not exceed estimation noise
-        step = np.clip(step, -noise_stddev * step_clip_factor, noise_stddev * step_clip_factor)
+        step = grad * noise_stddev * step_size_factor
 
         # calculate average step magnitude for use in determining weight decay factor
         step_mag = np.mean(np.absolute(step))
@@ -153,7 +142,7 @@ def train(
         set_model_params(model, get_model_params(model) + step)
 
         # decay weights
-        set_model_params(model, get_model_params(model) * (1 - weight_decay * step_mag))
+        set_model_params(model, get_model_params(model) * (1 - weight_decay_factor * step_mag))
 
         score_history.append(score)
         print('step:', len(score_history), 'score:', score)
@@ -163,18 +152,17 @@ def train(
         pyplot.plot(score_history, linewidth=0.35)
         pyplot.savefig('score history.png')
 
-        if score > best_score * (1 + min_delta):
+        if score > best_score:
             best_score = score
             iters_since_last_best = 0
             lr_reduce_wait = 0
         else:
             iters_since_last_best += 1
-            lr_reduce_wait += 1
+            noise_reduce_wait += 1
 
-            if lr_reduce_wait >= int(patience / 2):
+            if noise_reduce_wait >= int(patience / 2):
                 noise_stddev /= noise_reduce_factor
-                lr /= lr_reduce_factor
-                lr_reduce_wait = 0
+                noise_reduce_wait = 0
 
             if iters_since_last_best >= patience:
                 return score_history, model
