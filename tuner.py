@@ -13,26 +13,36 @@ def train(
         init_routine,  # custom routine used to initialize weights to good starting point
 
         ### grad estimate params ###
-        momentum=0.99,
-        est_threshold=0.9,
-        noise_stddev=0.02,
+        momentum=0.995,  # determines the stability/accuracy of the gradient estimate. Recommended 0.99 - 0.999+
+        est_threshold=0.9,  # determines how lenient to be with the quality of a step. 
+        # a value too high will cause us to improve the quality of the gradient beyond what actually has an 
+        # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
+        noise_stddev=0.1,  # starting off with larger noise may lead to a more optimal optimization trajectory,
+        # where we take steps that are more generally good at first, and then fine tune as we try to reach into higher
+        # score space. Recommended: Default
 
-        ### patience/reduce params ###
+        ### patience/reduce params ### - Recommended at defaults.
         patience=20,
         noise_reduce_factor=10,
 
         ### step/weight params ###
-        step_size_factor=3,  # ensure that not step exceeds that standard dev of noise * X
+        step_size_factor=3,  # this can be seen as a form of LR, where a 100% confident estimate (all samples points in
+        # the same direction), will result in a step of noise_stddev * step_size_factor. In a normal scenario, 100%
+        # confidence would never be achieved, so setting to a value higher than 3 might not necessarily mean you are
+        # taking a step bigger than the area of estimation
         # values recommendations: keep at default
 
         weight_decay_factor=0.1,  # weight decay *factor*. different from regular weight decay
         # values recommendations: 0.01 -> 1
 
         ### other ###
-        init_iters=100  # if noise in weights is unable to produce a score difference after X attempts,
+        init_iters=100,  # if noise in weights is unable to produce a score difference after X attempts,
         # throw an error. For many problems, this should not be relevant. For problems where we expect the environment
         # to require many tries to generate varying scores, this can be increased.
         # Otherwise, see the error thrown during initialization.
+        
+        consec_no_change_thresh=25  # if noise is unable to produce varying scores for X iters, training is terminated.
+        # it may be normal for *some* iterations to not produce different scores
 ):
     init_routine(model)
 
@@ -63,19 +73,15 @@ def train(
         # calculate negative/positive noise scores
         pos_rew = get_step_score(model, v)
         neg_rew = get_step_score(model, -v)
-
-        if pos_rew != neg_rew:
-
-            m = momentum
-
-            if pos_rew > neg_rew:
-                grad = grad * m + np.sign(v) * (1 - m)
-            else:
-                grad = grad * m - np.sign(v) * (1 - m)
-
-            return grad
-        else:
+        
+        # noise did not produce a change in score
+        if pos_rew == neg_rew:
             return None
+
+        if pos_rew > neg_rew:
+            return grad * momentum + np.sign(v) * (1 - momentum)
+        else:
+            return grad * momentum - np.sign(v) * (1 - momentum)
 
     # prep variables before training
     iters_since_last_best = 0
@@ -97,19 +103,17 @@ def train(
 
     while True:
 
-        # estimate gradient for step
+        # estimate gradient for a single step
+        
         grad_hi = copy.deepcopy(grad)
         grad_lo = copy.deepcopy(grad)
-
         is_new_high = np.ones(grad.shape, dtype=bool)
         is_new_low = np.ones(grad.shape, dtype=bool)
-
-        # here we keep accumulating samples and adding to estimate until 'grad_est_threshold' percent of gradient
-        # estimate stays within 'grad_min_delta_perc' of the current bounds
-
         consec_no_change = 0
 
-        # in other words, we keep estimating gradient until the estimate is stationary enough
+        # here we keep accumulating samples and adding to estimate until the percent of stationary estimates vs. 
+        # non-stationary estimates goes above the user defined threshold
+
         while sum(np.logical_or(is_new_high, is_new_low)) / num_params > 1 - est_threshold:
 
             new_grad = add_sample_to_grad_estimate(grad)
@@ -118,7 +122,7 @@ def train(
             else:
                 consec_no_change += 1
 
-                if consec_no_change > 25:
+                if consec_no_change > consec_no_change_thresh:
                     print('estimation surface too flat (noise too small, or not able to produce varying scores)')
                     return score_history
                 continue
@@ -155,7 +159,6 @@ def train(
         if score > best_score:
             best_score = score
             iters_since_last_best = 0
-            lr_reduce_wait = 0
         else:
             iters_since_last_best += 1
             noise_reduce_wait += 1
