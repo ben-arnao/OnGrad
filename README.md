@@ -61,14 +61,14 @@ Please try out OnGrad for yourself and please share the results!
 
 # Usage
 
-The user needs to provide 4 parameters...
+The user needs to provide the following parameters...
 
-```get_model_params``` which takes a model, and outputs a flattened list of model parameters
+```get_model_params``` a function which takes a model, and outputs a flattened list of model parameters
 
-```set_model_params``` which takes a model and a flattened list of model parameters, and sets the model with the provided parameters
+```set_model_params``` a function which takes a model and a flattened list of model parameters, and sets the model with the provided parameters
 
-```get_episode_score``` this is a function which accepts a model as a parameter, and output the score of this model (ex. final episode score)
+```get_episode_score``` a function which accepts a model as a parameter, and outputs the score of this model (ex. final episode score)
 
 ```model``` this is the supplied model (can be tensorflow, pytorch, etc.)
 
-```init_routine``` this is a weight initialization routine to ensure we start with a model where noise is able to produce varying scores. One example might be to pre-train the model on a set of random actions to simulate an epsilon greedy policy.
+```init_routine``` this function is a weight initialization routine to ensure we start with a model where noise is able to produce varying scores. One example might be to pre-train the model on a set of random actions to simulate an epsilon greedy policy.
