@@ -23,7 +23,7 @@ def train(
 
         ### patience/reduce params ### - Recommended at defaults.
         patience=20,
-        noise_reduce_factor=10,
+        noise_reduce_factor=2,
 
         ### step/weight params ###
         step_size_factor=3,  # this can be seen as a form of LR, where a 100% confident estimate (all samples points in
