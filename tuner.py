@@ -14,10 +14,10 @@ def train(
 
         ### grad estimate params ###
         momentum=0.995,  # determines the stability/accuracy of the gradient estimate. Recommended 0.99 - 0.999+
-        est_threshold=0.9,  # determines how lenient to be with the quality of a step. 
-        # a value too high will cause us to improve the quality of the gradient beyond what actually has an 
+        est_threshold=0.9,  # determines how lenient to be with the quality of a step.
+        # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
-        noise_stddev=0.1,  # starting off with larger noise may lead to a more optimal optimization trajectory,
+        init_noise_stddev=0.1,  # starting off with larger noise may lead to a more optimal optimization trajectory,
         # where we take steps that are more generally good at first, and then fine tune as we try to reach into higher
         # score space. Recommended: Default
 
@@ -40,10 +40,11 @@ def train(
         # throw an error. For many problems, this should not be relevant. For problems where we expect the environment
         # to require many tries to generate varying scores, this can be increased.
         # Otherwise, see the error thrown during initialization.
-        
+
         consec_no_change_thresh=25  # if noise is unable to produce varying scores for X iters, training is terminated.
         # it may be normal for *some* iterations to not produce different scores
 ):
+    print('performing initialization routine...')
     init_routine(model)
 
     # get baseline
@@ -73,7 +74,7 @@ def train(
         # calculate negative/positive noise scores
         pos_rew = get_step_score(model, v)
         neg_rew = get_step_score(model, -v)
-        
+
         # noise did not produce a change in score
         if pos_rew == neg_rew:
             return None
@@ -84,6 +85,7 @@ def train(
             return grad * momentum - np.sign(v) * (1 - momentum)
 
     # prep variables before training
+    noise_stddev = init_noise_stddev
     iters_since_last_best = 0
     noise_reduce_wait = 0
 
@@ -101,17 +103,18 @@ def train(
                             'policy). Note: This is only required to get optimization up and running, and should be '
                             'irrelevant after optimization starts.'.format(init_iters))
 
+    print('model is able to produce varying scores. training started!')
     while True:
 
         # estimate gradient for a single step
-        
+
         grad_hi = copy.deepcopy(grad)
         grad_lo = copy.deepcopy(grad)
         is_new_high = np.ones(grad.shape, dtype=bool)
         is_new_low = np.ones(grad.shape, dtype=bool)
         consec_no_change = 0
 
-        # here we keep accumulating samples and adding to estimate until the percent of stationary estimates vs. 
+        # here we keep accumulating samples and adding to estimate until the percent of stationary estimates vs.
         # non-stationary estimates goes above the user defined threshold
 
         while sum(np.logical_or(is_new_high, is_new_low)) / num_params > 1 - est_threshold:
@@ -139,17 +142,17 @@ def train(
         # calculate average step magnitude for use in determining weight decay factor
         step_mag = np.mean(np.absolute(step))
 
-        # get step score
-        score = get_step_score(model, step)
-
         # take step
         set_model_params(model, get_model_params(model) + step)
+
+        # get step score
+        score = get_episode_score(model)
 
         # decay weights
         set_model_params(model, get_model_params(model) * (1 - weight_decay_factor * step_mag))
 
         score_history.append(score)
-        print('step:', len(score_history), 'score:', score)
+        print('step #{} | score: {}'.format(len(score_history), score))
 
         # plot score history
         pyplot.clf()
@@ -166,6 +169,7 @@ def train(
             if noise_reduce_wait >= int(patience / 2):
                 noise_stddev /= noise_reduce_factor
                 noise_reduce_wait = 0
+                print('reducing noise...', noise_stddev)
 
             if iters_since_last_best >= patience:
                 return score_history, model
