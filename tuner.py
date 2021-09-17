@@ -41,7 +41,7 @@ def train(
         # to require many tries to generate varying scores, this can be increased.
         # Otherwise, see the error thrown during initialization.
 
-        consec_no_change_thresh=25  # if noise is unable to produce varying scores for X iters, training is terminated.
+        consec_no_change_thresh=25,  # if noise is unable to produce varying scores for X iters, training is terminated.
         # it may be normal for *some* iterations to not produce different scores
 ):
     print('performing initialization routine...')
@@ -92,7 +92,9 @@ def train(
     # ensure noise is able to produce varying scores
     i = 0
     while grad.any() == 0:
-        grad = add_sample_to_grad_estimate(grad)
+        new_grad = add_sample_to_grad_estimate(grad)
+        if new_grad is not None:
+            grad = new_grad
         i += 1
         if i >= init_iters:
             raise Exception('Supplied model is not learnable as noise in weights was not able to produce varying '
@@ -103,7 +105,7 @@ def train(
                             'policy). Note: This is only required to get optimization up and running, and should be '
                             'irrelevant after optimization starts.'.format(init_iters))
 
-    print('model is able to produce varying scores. training started!')
+    print('--- model is able to produce varying scores. training started! ---')
     while True:
 
         # estimate gradient for a single step
@@ -169,7 +171,7 @@ def train(
             if noise_reduce_wait >= int(patience / 2):
                 noise_stddev /= noise_reduce_factor
                 noise_reduce_wait = 0
-                print('reducing noise...', noise_stddev)
+                print('\treducing noise...', noise_stddev)
 
             if iters_since_last_best >= patience:
-                return score_history, model
+                return score_history
