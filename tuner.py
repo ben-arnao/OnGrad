@@ -124,6 +124,7 @@ def train(
             new_grad = add_sample_to_grad_estimate(grad)
             if new_grad is not None:
                 grad = new_grad
+                consec_no_change = 0
             else:
                 consec_no_change += 1
 
