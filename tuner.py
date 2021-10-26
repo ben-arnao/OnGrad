@@ -8,7 +8,7 @@ def train(
         # <><><> functions users needs to supply for their environment
         get_model_params,
         set_model_params,
-        get_episode_score,  # input is model, return a positive float for score
+        get_episode_score,  # input is model, return's float for score
         model,
         init_routine,  # custom routine used to initialize weights to good starting point
 
@@ -17,23 +17,15 @@ def train(
         est_threshold=0.9,  # determines how lenient to be with the quality of a step.
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
-        init_noise_stddev=0.1,  # starting off with larger noise may lead to a more optimal optimization trajectory,
-        # where we take steps that are more generally good at first, and then fine tune as we try to reach into higher
-        # score space. Recommended: Default
+        init_noise_stddev=0.05
 
-        ### patience/reduce params ### - Recommended at defaults.
-        patience=20,
+        ### patience/reduce params ###
+        patience=10,
         noise_reduce_factor=2,
 
         ### step/weight params ###
-        step_size_factor=3,  # this can be seen as a form of LR, where a 100% confident estimate (all samples points in
-        # the same direction), will result in a step of noise_stddev * step_size_factor. In a normal scenario, 100%
-        # confidence would never be achieved, so setting to a value higher than 3 might not necessarily mean you are
-        # taking a step bigger than the area of estimation
-        # values recommendations: keep at default
-
-        weight_decay_factor=0.1,  # weight decay *factor*. different from regular weight decay
-        # values recommendations: 0.01 -> 1
+        step_size_factor=0.1
+        weight_decay_factor=1e-4,  # weight decay *factor*. different from regular weight decay
 
         ### other ###
         init_iters=100,  # if noise in weights is unable to produce a score difference after X attempts,
@@ -130,7 +122,7 @@ def train(
 
                 if consec_no_change > consec_no_change_thresh:
                     print('estimation surface too flat (noise too small, or not able to produce varying scores)')
-                    return score_history
+                    return
                 continue
 
             is_new_high = np.where(grad > grad_hi, True, False)
@@ -142,9 +134,6 @@ def train(
         # calculate step
         step = grad * noise_stddev * step_size_factor
 
-        # calculate average step magnitude for use in determining weight decay factor
-        step_mag = np.mean(np.absolute(step))
-
         # take step
         set_model_params(model, get_model_params(model) + step)
 
@@ -152,7 +141,7 @@ def train(
         score = get_episode_score(model)
 
         # decay weights
-        set_model_params(model, get_model_params(model) * (1 - weight_decay_factor * step_mag))
+        set_model_params(model, get_model_params(model) * (1 - weight_decay_factor * np.mean(np.absolute(step))))
 
         score_history.append(score)
         print('step #{} | score: {}'.format(len(score_history), score))
@@ -169,10 +158,10 @@ def train(
             iters_since_last_best += 1
             noise_reduce_wait += 1
 
-            if noise_reduce_wait >= int(patience / 2):
+            if noise_reduce_wait >= patience:
                 noise_stddev /= noise_reduce_factor
                 noise_reduce_wait = 0
                 print('\treducing noise...', noise_stddev)
 
-            if iters_since_last_best >= patience:
-                return score_history
+            if iters_since_last_best >= patience * 2:
+                return
