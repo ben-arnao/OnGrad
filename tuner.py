@@ -17,14 +17,14 @@ def train(
         est_threshold=0.9,  # determines how lenient to be with the quality of a step.
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
-        init_noise_stddev=0.05
+        init_noise_stddev=0.05,
 
         ### patience/reduce params ###
         patience=10,
         noise_reduce_factor=2,
 
         ### step/weight params ###
-        step_size_factor=0.1
+        step_size_factor=1,
         weight_decay_factor=1e-4,  # weight decay *factor*. different from regular weight decay
 
         ### other ###
@@ -80,6 +80,8 @@ def train(
     noise_stddev = init_noise_stddev
     iters_since_last_best = 0
     noise_reduce_wait = 0
+    grad_hi = copy.deepcopy(grad)
+    grad_lo = copy.deepcopy(grad)
 
     # ensure noise is able to produce varying scores
     i = 0
@@ -102,8 +104,10 @@ def train(
 
         # estimate gradient for a single step
 
-        grad_hi = copy.deepcopy(grad)
-        grad_lo = copy.deepcopy(grad)
+        bound_mag = np.where(np.abs(grad_hi - grad) > np.abs(grad - grad_lo),
+                             np.abs(grad - grad_lo),
+                             np.abs(grad_hi - grad))
+
         is_new_high = np.ones(grad.shape, dtype=bool)
         is_new_low = np.ones(grad.shape, dtype=bool)
         consec_no_change = 0
