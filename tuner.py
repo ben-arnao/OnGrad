@@ -13,8 +13,8 @@ def train(
         init_routine,  # custom routine used to initialize weights to good starting point
 
         ### grad estimate params ###
-        momentum=0.995,  # determines the stability/accuracy of the gradient estimate. Recommended 0.99 - 0.999+
-        est_threshold=0.9,  # determines how lenient to be with the quality of a step.
+        momentum=0.999,  # determines the stability/accuracy of the gradient estimate. Recommended 0.99 - 0.999+
+        est_threshold=0.925,  # determines how lenient to be with the quality of a step.
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
         init_noise_stddev=0.05,
@@ -101,12 +101,12 @@ def train(
 
     print('--- model is able to produce varying scores. training started! ---')
     while True:
-
         # estimate gradient for a single step
-
         bound_mag = np.where(np.abs(grad_hi - grad) > np.abs(grad - grad_lo),
                              np.abs(grad - grad_lo),
                              np.abs(grad_hi - grad))
+        grad_hi = grad + bound_mag
+        grad_lo = grad - bound_mag
 
         is_new_high = np.ones(grad.shape, dtype=bool)
         is_new_low = np.ones(grad.shape, dtype=bool)
