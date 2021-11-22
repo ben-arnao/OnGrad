@@ -49,12 +49,6 @@ This gives us some useful information that will help us setting these values (ob
 
 It is important to keep in mind that for most problems, an estimate that is 100% accurate is not needed. From my own experiments I have found that a highly accurate but slow estimate causes the exact same score improvement plots, as an estimate that is fairly accurate but much faster. For most problems I have been able to get into very high score spaces with values that only required less than 100 samples per step.
 
-A few other key points to keep in mind
-
-* Step is calculated via gradient_estimate * noise_stddev * step_size_factor.
-
-* Noise (therefore step size as described above) is reduced when the score plateaus.
-
 Please try out OnGrad for yourself and share the results!
 
 # Usage
