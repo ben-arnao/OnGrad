@@ -17,15 +17,14 @@ def train(
         est_threshold=0.925,  # determines how lenient to be with the quality of a step.
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
-        init_noise_stddev=0.05,
+        init_noise_stddev=0.1,
 
         ### patience/reduce params ###
         patience=10,
         noise_reduce_factor=2,
 
         ### step/weight params ###
-        step_size_factor=1,
-        weight_decay_factor=1e-4,  # weight decay *factor*. different from regular weight decay
+        weight_decay_factor=1e-2,  # weight decay *factor*. different from regular weight decay
 
         ### other ###
         init_iters=100,  # if noise in weights is unable to produce a score difference after X attempts,
@@ -136,7 +135,7 @@ def train(
             grad_lo = np.where(is_new_low, grad, grad_lo)
 
         # calculate step
-        step = grad * noise_stddev * step_size_factor
+        step = grad * noise_stddev
 
         # take step
         set_model_params(model, get_model_params(model) + step)
@@ -158,6 +157,7 @@ def train(
         if score > best_score:
             best_score = score
             iters_since_last_best = 0
+            noise_reduce_wait = 0
         else:
             iters_since_last_best += 1
             noise_reduce_wait += 1
@@ -168,4 +168,5 @@ def train(
                 print('\treducing noise...', noise_stddev)
 
             if iters_since_last_best >= patience * 2:
+                print('training complete!')
                 return
