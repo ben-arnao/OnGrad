@@ -18,6 +18,7 @@ def train(
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
         init_noise_stddev=0.1,
+        normalize_step=False,
 
         ### patience/reduce params ###
         patience=10,
@@ -136,6 +137,9 @@ def train(
 
         # calculate step
         step = grad * noise_stddev
+        
+        if normalize_step:
+            step *= est_noise_stddev / np.mean(np.abs(step))
 
         # take step
         set_model_params(model, get_model_params(model) + step)
