@@ -18,7 +18,8 @@ def train(
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
         init_noise_stddev=0.1,
-        normalize_step=False,
+        normalize_step=False,  # When this is turned on, mean absolute step size will always be proprotional to the size of the noise,
+        # regardless of the mean absolute gradient value (global confidence average).
 
         ### patience/reduce params ###
         patience=10,
