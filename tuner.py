@@ -106,8 +106,9 @@ def train(
                             'irrelevant after optimization starts.'.format(init_iters))
 
     print('--- model is able to produce varying scores. training started! ---')
-    while True:
-        # estimate gradient for a single step
+    while True:  # estimate gradient for a single step
+
+        # calculate new initial bounds based on distance previous estimate traveled
         bound_mag = np.where(np.abs(grad_hi - grad) > np.abs(grad - grad_lo),
                              np.abs(grad - grad_lo),
                              np.abs(grad_hi - grad))
