@@ -1,11 +1,11 @@
 # OnGrad (online gradient estimation)
-A derivative free reinforcement learning algorithm
+A derivative-free reinforcement learning algorithm
 
 # Motivation for an alternative
 
 State of the art reinforcement learning methods like PPO or SAC can leave a lot to be desired when used on complex problems to achieve competitive performance. There are a few big shortcomings:
 
-1) A differentiable loss function is usually required to model reward distributions. However, many real life problems are either not differentiable or, if there does exist a differentiable loss function for the final episode performance with respect to model parameters, the loss function actually used is probably suboptimal at best. That is to say, a decrease in loss does not always translate to an increase in final episode performance in a direct manner. One can expect a loose correlation, but not much more. This might be good enough if we could eventually expect zero error predictions (more or less using a lookup table to know the exact value distribution for every time step), but this is never the case in real life scenarios. Neural networks are used not only to approximate these otherwise un-feasibly large reward tables, but more importantly to provide a means to predict on potentially unseen inputs. This sort of disconnect with the loss function used and actual performance can be problematic for many reasons. Training will likely be inefficient and final model performance can be subpar, especially on problems where the disconnect is biggest.
+1) A differentiable loss function is usually required to model reward distributions. However, many real life problems are either not differentiable or, if there does exist a differentiable loss function for the final episode performance with respect to model parameters, the loss function actually used is probably suboptimal at best. That is to say, a decrease in loss does not always translate to an increase in final episode performance in a direct manner. One can expect a loose correlation, but not much more. This might be good enough if we could eventually expect zero error predictions (more or less using a lookup table to know the exact value distribution for every time step), but this is never the case in real life scenarios. Neural networks are used not only to approximate these otherwise un-feasibly large reward tables, but more importantly to provide a means to predict on potentially unseen inputs. This sort of disconnect with the loss function used and actual final episode performance can be problematic for many reasons. Training will likely be inefficient and final model performance can be subpar.
 
 2) These methods usually require the practitioner to guess at or arrive at by trial and error a good value for the single static time horizon value (alpha). For some problems this may be fine if we want something decent or good enough, but to achieve high-end competitive performance a model will more than likely need to consider a wide variety of time horizons at varying points of play.
 
@@ -25,29 +25,9 @@ Since we operate directly on the gradient of the final episode score (what we re
 
 Unlike the original NES paper where the estimate is recalculated from scratch every step, OnGrad assumes the gradient for the next step will be more similar to the last iteration rather than dissimilar, and thus we use the last estimate as a base for the next step to greatly reduce the amount of overall samples needed.
 
-Only the amount of samples needed to update the estimate are calculated, drastically improving sample efficiency. Previously, a static amount of samples was calculated for every step without really knowing if this number was too little for a good estimate or too many such that extra samples did not reasonably improve the quality of the estimate.
+When tuned correctly, OnGrad only calculates enough samples to re-saturate the estimate for the next step, drastically improving sample efficiency. Previously, a static amount of samples was calculated for every step without really knowing if this number was too little for a good estimate or too many such that extra samples did not reasonably improve the quality of the estimate.
 
 OnGrad solves this issue by tracking the upper and lower bounds of the gradient estimate moving averages. We keep accumulating samples and adding to the estimate, until the estimate is deemed “stationary enough”. This is defined by tracking the percent of estimates that do not produce a new high or low bound. If this percentage goes above a threshold, we say that our estimates are good enough and we take the step. This means that for some steps where the true gradient does not change very much, not many samples need to be calculated. For steps however where there is a lot of change, the algorithm will dynamically calculate more samples to ensure we get the same quality of estimate.
-
-One experiment that can be performed to further analyze the properties of estimating gradients in this manner, is to initialize two sets of gradient estimate containers to random values. We then will accumulate samples and add to the moving average in parallel, and compare the convergence between the two. We calculate convergence by taking the mean absolute difference of the estimates. The smaller the difference, the closer the estimates are to each other and therefore to the true value/gradient, and the more accurate and stable the estimate is.
-
-Here are the following plots for an experiment using a noise stddev of 0.01, estimating for a single step.
-
-![mom 0.9](https://github.com/ben-arnao/OnGrad/blob/main/images/test_0.9.png?raw=true)
-![mom 0.99](https://github.com/ben-arnao/OnGrad/blob/main/images/test_0.99.png?raw=true)
-![mom 0.999](https://github.com/ben-arnao/OnGrad/blob/main/images/test_0.999.png?raw=true)
-
-We can discern a few important pieces of information from this experiment...
-
-1) As expected, a higher momentum produces a better estimate and likewise requires more samples.
-
-2) We can see that for a momentum of 0.9, the quality of the estimate levels off at around 90%. This is a good point to say that we have reached a point of diminishing returns, where it takes a lot of samples to improve the quality a little bit, if at all. We can also see that with a higher momentum, the threshold to reach this point becomes higher as well.
-
-3) A completely random set of estimates will on average have a difference factor of 1.0. We can see that with a momentum of 0.9 the best achievable estimate will have an error of 0.25, a momentum of 0.99 results in a BAE of 0.075, and finally a momentum of 0.999 looks to have a trajectory to reach a BAE of below 0.01.
-
-This gives us some useful information that will help us setting these values (obviously these are very dependent on the users goals and the experiment). For momentum, one will probably want to keep this value between 0.99 and 0.999. For threshold, a value between 0.9 and 0.95 seems best.
-
-It is important to keep in mind that for most problems, an estimate that is 100% accurate is not needed. From my own experiments I have found that a highly accurate but slow estimate causes the exact same score improvement plots, as an estimate that is fairly accurate but much faster. For most problems I have been able to get into very high score spaces with values that only required less than 100 samples per step.
 
 Please try out OnGrad for yourself and share the results!
 
