@@ -13,26 +13,31 @@ def train(
         init_routine,  # custom routine used to initialize weights to good starting point
 
         ### grad estimate params ###
-        momentum=0.999,  # determines the stability/accuracy of the gradient estimate. Recommended 0.99 - 0.999+
+        momentum=0.999,  # determines the stability/accuracy of the gradient estimate. recommended 0.99 - 0.999+
         est_threshold=0.925,  # determines how lenient to be with the quality of a step.
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
-        # impact on performance, and therefore result in poor sample efficiency. Recommended 0.9 - 0.95+
-        init_noise_stddev=0.1,
-        normalize_step=False,  # When this is turned on, mean absolute step size will always be proprotional to the size of the noise,
-        # regardless of the mean absolute gradient value (global confidence average).
+        # impact on performance, and therefore result in poor sample efficiency. recommended 0.9 - 0.95+
+        init_noise_stddev=0.1,  # this value is good in most cases. can potentially be put higher to increase speed,
+        # or lower if optimization fails to get off the ground (more sensitive models)
+        normalize_step=False,  # when this is turned on, mean absolute step size will always be proportional to the
+        # size of the noise, regardless of the mean absolute gradient (confidence). what this translates to is the
+        # algorithm taking steps potentially bigger than the confidence would suggest, to speed up optimization in the
+        # early stages while the gradient estimation is still saturating.
 
         ### patience/reduce params ###
-        patience=10,
-        noise_reduce_factor=2,
+        patience=10,  # patience used to derive early stopping and noise reduce patience. default value recommended
+        noise_reduce_factor=2,  # factor to reduce noise by when score plateaus. recommended either 2 (safer option) or
+        # 10 (faster option)
 
-        ### step/weight params ###
-        weight_decay_factor=1e-2,  # weight decay *factor*. different from regular weight decay
+        ### weight decay params ###
+        weight_decay_factor=1e-2,  # weight decay *factor*. different from regular weight decay. weight decay in
+        # ongrad is based on the mean absolute step size.
 
         ### other ###
         init_iters=100,  # if noise in weights is unable to produce a score difference after X attempts,
         # throw an error. For many problems, this should not be relevant. For problems where we expect the environment
         # to require many tries to generate varying scores, this can be increased.
-        # Otherwise, see the error thrown during initialization.
+        # otherwise, see the error thrown during initialization.
 
         consec_no_change_thresh=25,  # if noise is unable to produce varying scores for X iters, training is terminated.
         # it may be normal for *some* iterations to not produce different scores
@@ -138,9 +143,9 @@ def train(
 
         # calculate step
         step = grad * noise_stddev
-        
+
         if normalize_step:
-            step *= est_noise_stddev / np.mean(np.abs(step))
+            step *= noise_stddev / np.mean(np.abs(step))
 
         # take step
         set_model_params(model, get_model_params(model) + step)
