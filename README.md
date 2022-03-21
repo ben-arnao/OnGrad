@@ -29,6 +29,8 @@ When tuned correctly, OnGrad only calculates enough samples to "re-saturate" the
 
 OnGrad solves this issue by tracking the upper and lower bounds of the gradient estimate moving averages. We keep accumulating samples and adding to the estimate, until the estimate is deemed “stationary enough”. This is defined by tracking the percent of estimates that do not produce a new high or low bound. If this percentage goes above a threshold, we say that our estimates are good enough and we take the step. This means that for some steps where the true gradient does not change very much, not many samples need to be calculated. For steps however where there is a high degree of change, the algorithm will dynamically calculate more samples to ensure we get the same quality of estimate.
 
+To combat the issue NES experiences with not being able to ascend into very high score spaces, we do something similar to reduce LR on plateau, but instead reduce the noise size. Since the step is scaled by noise size, a smaller step is then taken in return. By "focusing" our gradient estimation more locally upon a plateau, we find that this gives us the optimization properties needed to traverse into these high score spaces.
+
 Please try out OnGrad for yourself and share the results!
 
 # Usage
@@ -44,3 +46,5 @@ The user needs to provide the following parameters...
 ```model``` this is the supplied model (can be tensorflow, pytorch, etc.)
 
 ```init_routine``` this function is a weight initialization routine to ensure we start with a model where noise is able to produce varying scores. One example might be to pre-train the model on a set of random actions to simulate an epsilon greedy policy.
+
+The default values for the algorithm-specific parameters should be sufficient for many use cases.
