@@ -14,7 +14,7 @@ def train(
 
         ### grad estimate params ###
         momentum=0.99,  # determines the stability/accuracy of the gradient estimate. recommended 0.99 - 0.999+
-        est_threshold=0.8,  # determines how lenient to be with the quality of a step.
+        est_threshold=0.9,  # determines how lenient to be with the quality of a step.
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. recommended 0.8 - 0.95+
         init_noise_stddev=0.1,  # this value is good in most cases. can potentially be put higher to increase speed,
@@ -123,10 +123,12 @@ def train(
                 consec_no_change = 0
             else:
                 consec_no_change += 1
-
+                
                 if consec_no_change > consec_no_change_thresh:
-                    print('estimation surface too flat (noise too small, or not able to produce varying scores)')
-                    return
+                    print('\tnoise not big enough to produce different scores. increasing noise...', noise_stddev)
+                    noise_stddev *= noise_reduce_factor
+                    noise_reduce_wait = 0
+                    consec_no_change = 0
                 continue
 
             is_new_high = np.where(grad > grad_hi, True, False)
