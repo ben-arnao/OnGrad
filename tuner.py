@@ -19,15 +19,12 @@ def train(
         # impact on performance, and therefore result in poor sample efficiency. recommended 0.8 - 0.95+
         init_noise_stddev=0.1,  # this value is good in most cases. can potentially be put higher to increase speed,
         # or lower if optimization fails to get off the ground (more sensitive models)
+        step_size=1,
 
         ### patience/reduce params ###
         patience=10,  # patience used to derive early stopping and noise reduce patience. default value recommended
         noise_reduce_factor=2,  # factor to reduce noise by when score plateaus. recommended either 2 (safer option) or
         # 10 (faster option)
-
-        ### weight decay params ###
-        weight_decay_factor=1e-3,  # weight decay *factor*. different from regular weight decay. weight decay in
-        # ongrad is based on the mean absolute step size.
 
         ### other ###
         init_iters=100,  # if noise in weights is unable to produce a score difference after X attempts,
@@ -139,16 +136,13 @@ def train(
             grad_lo = np.where(is_new_low, grad, grad_lo)
 
         # calculate step
-        step = grad * noise_stddev
+        step = grad * noise_stddev * step_size
 
         # take step
         set_model_params(model, get_model_params(model) + step)
 
         # get step score
         score = get_episode_score(model)
-
-        # decay weights
-        set_model_params(model, get_model_params(model) * (1 - weight_decay_factor * np.mean(np.absolute(step))))
 
         score_history.append(score)
         print('step #{} | score: {}'.format(len(score_history), score))
