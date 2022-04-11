@@ -17,6 +17,7 @@ def train(
         est_threshold=0.9,  # determines how lenient to be with the quality of a step.
         # a value too high will cause us to improve the quality of the gradient beyond what actually has an
         # impact on performance, and therefore result in poor sample efficiency. recommended 0.8 - 0.95+
+        # sometimes a lower value can act as a form of regularization
         init_noise_stddev=0.1,  # this value is good in most cases. can potentially be put higher to increase speed,
         # or lower if optimization fails to get off the ground (more sensitive models)
         step_size=1,
