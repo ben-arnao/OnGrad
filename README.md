@@ -45,6 +45,6 @@ The user needs to provide the following parameters...
 
 ```model``` this is the supplied model (can be tensorflow, pytorch, etc.)
 
-```init_routine``` this function is a weight initialization routine to ensure we start with a model where noise is able to produce varying scores. One example might be to pre-train the model on a set of random actions to simulate an epsilon greedy policy.
+```init_routine``` this function is a weight initialization routine to ensure we start with a model where noise is able to produce varying scores. One example might be to pre-train the model on a set of random actions to simulate an epsilon greedy policy. This function takes in the model.
 
 The default values for the algorithm-specific parameters should be sufficient for many use cases.
